@@ -17,11 +17,36 @@ export const Colors = {
   },
   dark: {
     text: '#ffffff',
-    background: '#000000',
-    backgroundElement: '#212225',
-    backgroundSelected: '#2E3135',
-    textSecondary: '#B0B4BA',
+    background: '#050607',
+    backgroundElement: '#111317',
+    backgroundSelected: '#22252B',
+    textSecondary: '#8B9099',
   },
+} as const;
+
+/**
+ * Montserrat, one family name per weight. With a custom font, pick the weight
+ * through fontFamily and leave fontWeight unset, or the OS fakes a bold.
+ */
+export const Type = {
+  light: 'Montserrat_300Light',
+  regular: 'Montserrat_400Regular',
+  medium: 'Montserrat_500Medium',
+  semibold: 'Montserrat_600SemiBold',
+  bold: 'Montserrat_700Bold',
+} as const;
+
+/** Thin outline that separates dark cards from the dark background. */
+export const Hairline = 'rgba(255,255,255,0.07)';
+
+/** Status colours, the same in light and dark mode. */
+export const Status = {
+  accent: '#208AEF',
+  ok: '#22A559',
+  warn: '#E8930C',
+  danger: '#E5484D',
+  /** Other cyclists, in the 3D view and on the camera picture */
+  cyclist: '#3DD6A3',
 } as const;
 
 export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;

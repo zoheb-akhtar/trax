@@ -1,0 +1,2 @@
+# Draws the test camera picture. On the real board, OpenCV replaces this.
+pillow

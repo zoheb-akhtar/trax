@@ -1,11 +1,8 @@
 import { NativeTabs } from 'expo-router/native-tabs';
-import { useColorScheme } from 'react-native';
-
 import { Colors } from '@/constants/theme';
 
 export default function AppTabs() {
-  const scheme = useColorScheme();
-  const colors = Colors[scheme === 'dark' ? 'dark' : 'light'];
+  const colors = Colors.dark;
 
   return (
     <NativeTabs
@@ -13,16 +10,36 @@ export default function AppTabs() {
       indicatorColor={colors.backgroundElement}
       labelStyle={{ selected: { color: colors.text } }}>
       <NativeTabs.Trigger name="index">
-        <NativeTabs.Trigger.Label>Home</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Label>Ride</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
+          sf="bicycle"
           src={require('@/assets/images/tabIcons/home.png')}
           renderingMode="template"
         />
       </NativeTabs.Trigger>
 
-      <NativeTabs.Trigger name="explore">
-        <NativeTabs.Trigger.Label>Explore</NativeTabs.Trigger.Label>
+      <NativeTabs.Trigger name="history">
+        <NativeTabs.Trigger.Label>History</NativeTabs.Trigger.Label>
         <NativeTabs.Trigger.Icon
+          sf="clock.arrow.circlepath"
+          src={require('@/assets/images/tabIcons/explore.png')}
+          renderingMode="template"
+        />
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="security">
+        <NativeTabs.Trigger.Label>Security</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon
+          sf="lock.shield"
+          src={require('@/assets/images/tabIcons/explore.png')}
+          renderingMode="template"
+        />
+      </NativeTabs.Trigger>
+
+      <NativeTabs.Trigger name="device">
+        <NativeTabs.Trigger.Label>Device</NativeTabs.Trigger.Label>
+        <NativeTabs.Trigger.Icon
+          sf="dot.radiowaves.left.and.right"
           src={require('@/assets/images/tabIcons/explore.png')}
           renderingMode="template"
         />

@@ -1,56 +1,59 @@
-# Welcome to your Expo app 👋
+# Velo
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Companion phone app for Velo, a bike-mounted device that watches the road while you ride and
+guards the bike while it is parked. Built for the 300 Mass Ave Startup Hackathon (November 2026).
 
-## Get started
+The app is an [Expo](https://expo.dev) (React Native) project. It runs against either a built-in
+simulated device or a real one over the local network.
 
-1. Install dependencies
-
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Run the app
 
 ```bash
-npm run reset-project
+npm install
+npx expo start
 ```
 
-This command will move the starter code to the **example** directory and create a blank **src/app** directory where you can start developing.
+Then press `i` for the iOS simulator, or scan the QR code with Expo Go on a phone.
 
-### Other setup steps
+## Run the test device server
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+A small Python server that plays the device's part (camera pictures, detections, alarm), so the
+app can be tested without hardware. See [device/README.md](device/README.md).
 
-## Learn more
+```bash
+cd device
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python velo_server.py
+```
 
-To learn more about developing your project with Expo, look at the following resources:
+In the app's **Device** tab, enter the address the server prints (`localhost:8000` from the iOS
+simulator on the same Mac).
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+## What's in the app
 
-## Join the community
+- **Ride**: speed, a 3D view of the road with nearby vehicles and cyclists, turn-by-turn on real
+  streets, and a camera picture that appears when a vehicle gets close.
+- **History**: past rides with stats and pictures from the front and rear cameras.
+- **Security**: arm or disarm, and a full-screen alert when the bike is moved.
+- **Device**: connect to a Velo, or use the simulated one.
 
-Join our community of developers creating universal apps.
+## Where things are
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+| What | Where |
+| --- | --- |
+| Screens | `src/app/` |
+| 3D ride view | `src/components/proximity-scene.tsx` |
+| Device connection and simulation | `src/device/` |
+| Routing, streets, parking | `src/nav/` |
+| Ride recording | `src/history/` |
+| What the device must send | [docs/device-api.md](docs/device-api.md) |
+| Test device server | `device/velo_server.py` |
+
+## Notes
+
+- Search, routing, streets and parking come from free community OpenStreetMap services
+  (Photon, Valhalla, Overpass). They are slow at times and are not meant for production use.
+- Positions of detected objects are estimates from a single camera.
+
+Map data © OpenStreetMap contributors.

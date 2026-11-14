@@ -41,3 +41,10 @@ example
 # generated native folders
 /ios
 /android
+
+# Python environment for the device server
+device/.venv/
+__pycache__/
+
+# Claude Code, this machine only
+.claude/settings.local.json
