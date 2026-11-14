@@ -1,6 +1,6 @@
 import { Colors } from '@/constants/theme';
 
-/** Velo is dark-only: it is read at a glance on handlebars, often in low light. */
+/** Velo is light-only: warm off-white pages, white cards, black text. */
 export function useTheme() {
-  return Colors.dark;
+  return Colors.light;
 }

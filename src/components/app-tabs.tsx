@@ -2,7 +2,7 @@ import { NativeTabs } from 'expo-router/native-tabs';
 import { Colors } from '@/constants/theme';
 
 export default function AppTabs() {
-  const colors = Colors.dark;
+  const colors = Colors.light;
 
   return (
     <NativeTabs

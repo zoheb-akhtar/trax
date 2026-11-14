@@ -70,7 +70,7 @@ export default function RideScreen() {
   const insets = useSafeAreaInsets();
   const { state, connection, streamUrlFor, setMode } = useDevice();
   const trip = useNav();
-  const { nav, navigating, progress, route, roads, position } = trip;
+  const { nav, navigating, progress, route, roads, buildings, position } = trip;
   const [fullView, setFullView] = useState(false);
   const [planning, setPlanning] = useState(false);
 
@@ -93,12 +93,14 @@ export default function RideScreen() {
         .find((c) => !quiet || c.z > 0) ?? null);
   const chip = CONNECTION_CHIP[connection];
 
-  // While following a route, the 3D view's ground is the real map.
+  // Once a route is planned, the 3D view's ground is the real map.
   const ground = useMemo(
-    () => (navigating && route ? buildGround(route, roads) : null),
-    [navigating, route, roads],
+    () => (route ? buildGround(route, roads, buildings) : null),
+    [route, roads, buildings],
   );
   const at = useMemo(() => {
+    // A route that is planned but not started yet is previewed from its first metres.
+    if (route && !navigating) return pointAlong(route.points, route.cumulative, 0);
     if (!position || !progress) return null;
     // GPS is a few metres out, which would draw the rider beside the route. While they are
     // near it, put them on it; once they are properly off route, show where they really are.
@@ -107,7 +109,7 @@ export default function RideScreen() {
       return { lat: onRoute.lat, lon: onRoute.lon, heading: progress.heading };
     }
     return { ...position, heading: progress.heading };
-  }, [position, progress, route]);
+  }, [position, progress, route, navigating]);
 
   useEffect(() => {
     if (vehicleClose) haptic.warning();
@@ -268,7 +270,7 @@ export default function RideScreen() {
                 <SymbolView
                   name={{ ios: 'magnifyingglass', android: 'search', web: 'search' }}
                   size={16}
-                  tintColor="#8B9099"
+                  tintColor="#6B7076"
                 />
                 <Text style={styles.whereToText}>Where to?</Text>
               </Pressable>
@@ -304,18 +306,18 @@ export default function RideScreen() {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#07080B' },
+  screen: { flex: 1, backgroundColor: '#F2F1ED' },
   stage: { flex: 1 },
   top: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
   speedValue: {
-    color: '#fff',
+    color: '#111111',
     fontFamily: Type.light,
     fontSize: 88,
     lineHeight: 96,
     letterSpacing: -2,
   },
   speedUnit: {
-    color: '#8B9099',
+    color: '#6B7076',
     fontFamily: Type.medium,
     fontSize: 11,
     letterSpacing: 2,
@@ -346,7 +348,7 @@ const styles = StyleSheet.create({
   },
   footerLeft: { gap: 6, alignItems: 'flex-start' },
   caption: {
-    color: 'rgba(255,255,255,0.35)',
+    color: 'rgba(0,0,0,0.4)',
     fontFamily: Type.medium,
     fontSize: 10,
     letterSpacing: 1.6,
@@ -360,7 +362,7 @@ const styles = StyleSheet.create({
   },
   cyclistNotice: { backgroundColor: Status.cyclist },
   cyclistText: { color: '#04130E' },
-  noticeText: { color: '#fff', fontFamily: Type.semibold, fontSize: 13, letterSpacing: 0.2 },
+  noticeText: { color: '#FFF', fontFamily: Type.semibold, fontSize: 13, letterSpacing: 0.2 },
   parked: {
     flex: 1,
     paddingHorizontal: Spacing.four,
@@ -398,13 +400,13 @@ const styles = StyleSheet.create({
     borderRadius: 18,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Hairline,
-    backgroundColor: '#111317',
+    backgroundColor: '#FFFFFF',
   },
-  barValue: { color: '#fff', fontFamily: Type.regular, fontSize: 22, letterSpacing: -0.4 },
-  barDetail: { flex: 1, color: '#8B9099', fontFamily: Type.regular, fontSize: 13 },
+  barValue: { color: '#111111', fontFamily: Type.regular, fontSize: 22, letterSpacing: -0.4 },
+  barDetail: { flex: 1, color: '#6B7076', fontFamily: Type.regular, fontSize: 13 },
   whereTo: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minHeight: 40 },
-  whereToText: { color: '#8B9099', fontFamily: Type.regular, fontSize: 16 },
-  sheet: { flex: 1, backgroundColor: '#07080B', padding: Spacing.three, gap: Spacing.three },
+  whereToText: { color: '#6B7076', fontFamily: Type.regular, fontSize: 16 },
+  sheet: { flex: 1, backgroundColor: '#F2F1ED', padding: Spacing.three, gap: Spacing.three },
   sheetHeader: {
     flexDirection: 'row',
     alignItems: 'center',

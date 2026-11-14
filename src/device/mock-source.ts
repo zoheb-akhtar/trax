@@ -71,6 +71,10 @@ export class MockSource extends SnapshotStore implements DeviceSource {
     this.patchState({ alarm: false });
   }
 
+  soundAlarm() {
+    this.patchState({ alarm: true });
+  }
+
   simulateTamper() {
     const { state } = this.snapshot;
     const ts = Date.now();

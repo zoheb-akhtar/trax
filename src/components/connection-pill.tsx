@@ -36,11 +36,11 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Hairline,
-    backgroundColor: 'rgba(255,255,255,0.04)',
+    backgroundColor: '#FFFFFF',
   },
   dot: { width: 6, height: 6, borderRadius: 3 },
   text: {
-    color: '#fff',
+    color: '#111111',
     fontFamily: Type.medium,
     fontSize: 11,
     letterSpacing: 1.2,

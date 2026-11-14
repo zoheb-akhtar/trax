@@ -87,7 +87,7 @@ export function TurnBanner({ progress, compact }: { progress: Progress; compact?
           name={ICON[direction]}
           size={size * 0.52}
           weight="semibold"
-          tintColor={signalling ? '#000' : '#fff'}
+          tintColor="#111111"
         />
       </SignalBox>
       <View style={styles.text}>
@@ -103,7 +103,7 @@ export function TurnBanner({ progress, compact }: { progress: Progress; compact?
       {!compact && progress.then && !progress.arrived && !progress.offRoute && (
         <View style={styles.then}>
           <Text style={styles.thenLabel}>THEN</Text>
-          <SymbolView name={ICON[progress.then.direction]} size={18} tintColor="#8B9099" />
+          <SymbolView name={ICON[progress.then.direction]} size={18} tintColor="#6B7076" />
         </View>
       )}
     </View>
@@ -157,19 +157,19 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Hairline,
-    backgroundColor: 'rgba(12,14,17,0.94)',
+    backgroundColor: 'rgba(255,255,255,0.96)',
   },
   compact: { padding: 8, borderRadius: 16, gap: 12 },
   box: {
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#22252B',
+    backgroundColor: '#E8E7E2',
     overflow: 'hidden',
   },
   text: { flex: 1 },
-  title: { color: '#fff', fontFamily: Type.light, fontSize: 34, lineHeight: 40, letterSpacing: -0.8 },
-  titleCompact: { color: '#fff', fontFamily: Type.regular, fontSize: 22, lineHeight: 26, letterSpacing: -0.4 },
-  detail: { color: '#8B9099', fontFamily: Type.regular, fontSize: 13, lineHeight: 18 },
+  title: { color: '#111111', fontFamily: Type.light, fontSize: 34, lineHeight: 40, letterSpacing: -0.8 },
+  titleCompact: { color: '#111111', fontFamily: Type.regular, fontSize: 22, lineHeight: 26, letterSpacing: -0.4 },
+  detail: { color: '#6B7076', fontFamily: Type.regular, fontSize: 13, lineHeight: 18 },
   then: { alignItems: 'center', gap: 4, paddingHorizontal: 6 },
-  thenLabel: { color: '#8B9099', fontFamily: Type.medium, fontSize: 9, letterSpacing: 1.4 },
+  thenLabel: { color: '#6B7076', fontFamily: Type.medium, fontSize: 9, letterSpacing: 1.4 },
 });

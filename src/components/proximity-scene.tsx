@@ -15,7 +15,7 @@ import { Status } from '@/constants/theme';
 import { isLargeVehicle } from '@/device/geometry';
 import { TrackSmoother, type SceneObject } from '@/device/tracks';
 import type { Detection } from '@/device/types';
-import { toPose, type Ground, type GroundLine, type Pose } from '@/nav/ground';
+import { toPose, type Ground, type GroundBuilding, type GroundLine, type Pose } from '@/nav/ground';
 import type { LatLon } from '@/nav/types';
 
 /**
@@ -37,8 +37,8 @@ type Props = {
   at?: (LatLon & { heading: number }) | null;
 };
 
-const GROUND = '#07080B';
-const LINE = '#3A4049';
+const GROUND = '#ECEBE6';
+const LINE = '#C4C3BC';
 
 // ---- Camera -------------------------------------------------------------------
 const EYE = [0, 7.5, 13] as const;
@@ -94,7 +94,7 @@ const points = (...ps: Point[]) => ps.map((p) => `${p.x.toFixed(1)},${p.y.toFixe
 // ---- Scene pieces ---------------------------------------------------------------
 
 const PALETTE = {
-  neutral: { top: '#D5DAE2', back: '#A9B0BB', side: '#858D9A' },
+  neutral: { top: '#8B919B', back: '#6C727D', side: '#575D67' },
   danger: { top: '#F27377', back: Status.danger, side: '#B3383C' },
 };
 
@@ -255,7 +255,7 @@ function SceneObjectShape({ object, project }: { object: SceneObject; project: P
     return <Cyclist project={project} x={object.x} z={object.z} opacity={opacity} />;
   }
   if (object.label === 'person') {
-    return <Figure project={project} x={object.x} z={object.z} color="#8DB8FF" opacity={opacity} />;
+    return <Figure project={project} x={object.x} z={object.z} color="#3F7FE0" opacity={opacity} />;
   }
 
   const colors = object.close ? PALETTE.danger : PALETTE.neutral;
@@ -336,10 +336,10 @@ const GROUND_REACH_M = 120;
 
 /** Half-widths in metres, and colours, for each kind of street. */
 const STREET = {
-  minor: { half: 3, color: '#171A20' },
-  foot: { half: 2, color: '#14171C' },
-  major: { half: 4.6, color: '#20242C' },
-  cycle: { half: 1.3, color: '#123A33' },
+  minor: { half: 3, color: '#FAFAF8' },
+  foot: { half: 2, color: '#F5F4F0' },
+  major: { half: 4.6, color: '#FFFFFF' },
+  cycle: { half: 1.3, color: '#CDEBDC' },
 } as const;
 const ROUTE_HALF_M = 0.6;
 
@@ -447,6 +447,131 @@ function joint(x: number, z: number, half: number, project: Projector) {
   return `${d}Z`;
 }
 
+// ---- Buildings ---------------------------------------------------------------------
+
+/** Buildings are drawn in full out to here, then fade out by BUILDING_FAR_M. */
+const BUILDING_CLEAR_M = 55;
+const BUILDING_FAR_M = 95;
+/** Nothing is drawn nearer the camera than this (z, metres). */
+const BUILDING_NEAR_Z = 8;
+/** Real heights would tower over the view and hide the road, so they are capped. */
+const BUILDING_MAX_HEIGHT_M = 16;
+const BUILDING_MIN_HEIGHT_M = 4;
+/** Far-to-near groups. Each is two shapes, so nearer buildings cover further ones. */
+const BUILDING_BANDS = 6;
+const WALL = '#CFCEC7';
+const ROOF = '#DDDCD5';
+const ROOF_EDGE = '#B9B8B0';
+
+/** One closed shape, always wound the same way on screen so overlapping ones never cancel. */
+function closed(xs: number[], ys: number[]) {
+  let area = 0;
+  for (let i = 0; i < xs.length; i++) {
+    const j = (i + 1) % xs.length;
+    area += xs[i] * ys[j] - xs[j] * ys[i];
+  }
+  let d = '';
+  for (let k = 0; k < xs.length; k++) {
+    const i = area >= 0 ? k : xs.length - 1 - k;
+    d += `${k === 0 ? 'M' : 'L'}${xs[i].toFixed(1)} ${ys[i].toFixed(1)}`;
+  }
+  return `${d}Z`;
+}
+
+/** Building outlines pushed up into blocks: dark walls with a lighter roof. */
+function Buildings({
+  buildings,
+  pose,
+  project,
+}: {
+  buildings: GroundBuilding[];
+  pose: Pose;
+  project: Projector;
+}) {
+  const sin = Math.sin((pose.heading * Math.PI) / 180);
+  const cos = Math.cos((pose.heading * Math.PI) / 180);
+
+  const visible: { z: number; fade: number; walls: string; roof: string }[] = [];
+  for (const b of buildings) {
+    const distance = Math.hypot(b.centreE - pose.east, b.centreN - pose.north);
+    if (distance > BUILDING_FAR_M) continue;
+
+    const count = b.east.length;
+    const baseX: number[] = [];
+    const baseY: number[] = [];
+    const topX: number[] = [];
+    const topY: number[] = [];
+    const height = Math.min(Math.max(b.height, BUILDING_MIN_HEIGHT_M), BUILDING_MAX_HEIGHT_M);
+    // Stays true only if every corner is level with the camera or behind it.
+    let tooNear = true;
+    for (let i = 0; i < count; i++) {
+      const de = b.east[i] - pose.east;
+      const dn = b.north[i] - pose.north;
+      const x = de * cos - dn * sin;
+      const z = -(de * sin + dn * cos);
+      if (z < BUILDING_NEAR_Z) tooNear = false;
+      // The part of a building that runs back past the camera is cut off flat.
+      const cut = Math.min(z, BUILDING_NEAR_Z);
+      const base = project(x, 0, cut);
+      const top = project(x, height, cut);
+      baseX.push(base.x);
+      baseY.push(base.y);
+      topX.push(top.x);
+      topY.push(top.y);
+    }
+    if (tooNear) continue;
+
+    let walls = '';
+    for (let i = 0; i < count; i++) {
+      const j = (i + 1) % count;
+      walls += closed(
+        [baseX[i], baseX[j], topX[j], topX[i]],
+        [baseY[i], baseY[j], topY[j], topY[i]],
+      );
+    }
+    const de = b.centreE - pose.east;
+    const dn = b.centreN - pose.north;
+    visible.push({
+      z: -(de * sin + dn * cos),
+      fade:
+        1 -
+        Math.min(
+          Math.max((distance - BUILDING_CLEAR_M) / (BUILDING_FAR_M - BUILDING_CLEAR_M), 0),
+          1,
+        ),
+      walls,
+      roof: closed(topX, topY),
+    });
+  }
+  if (visible.length === 0) return null;
+
+  visible.sort((a, b) => a.z - b.z); // furthest ahead first
+  const perBand = Math.ceil(visible.length / BUILDING_BANDS);
+  const bands: ReactNode[] = [];
+  for (let start = 0; start < visible.length; start += perBand) {
+    const group = visible.slice(start, start + perBand);
+    const opacity = group.reduce((sum, v) => sum + v.fade, 0) / group.length;
+    if (opacity <= 0.03) continue;
+    bands.push(
+      <Path
+        key={`w${start}`}
+        d={group.map((v) => v.walls).join('')}
+        fill={WALL}
+        opacity={opacity}
+      />,
+      <Path
+        key={`r${start}`}
+        d={group.map((v) => v.roof).join('')}
+        fill={ROOF}
+        stroke={ROOF_EDGE}
+        strokeWidth={0.75}
+        opacity={opacity}
+      />,
+    );
+  }
+  return <>{bands}</>;
+}
+
 function MapGround({
   ground,
   pose,
@@ -504,8 +629,8 @@ function MapGround({
   );
 }
 
-/** The rider is white so they stand out from the blue route underneath. */
-const RIDER = '#F4F7FB';
+/** The rider is black so they stand out from the blue route underneath. */
+const RIDER = '#111111';
 
 function Bike({ project }: { project: Projector }) {
   const centre = project(0, 0, 0);
@@ -647,6 +772,9 @@ export function ProximityScene(props: Props) {
             />
           ) : (
             <Road project={project} dashOffset={frame.dashOffset} />
+          )}
+          {props.ground && frame.pose && (
+            <Buildings buildings={props.ground.buildings} pose={frame.pose} project={project} />
           )}
           {aheadOfBike.map((o) => (
             <SceneObjectShape key={o.id} object={o} project={project} />

@@ -2,9 +2,10 @@ import * as Location from 'expo-location';
 
 import { haptic } from '@/lib/haptics';
 
-import { fetchAlongRoute, fetchRoute } from './api';
+import { fetchAlongRoute, fetchBuildings, fetchRoute } from './api';
 import { pointAlong, snapToRoute } from './geo';
 import type {
+  Building,
   Closure,
   LatLon,
   Parking,
@@ -30,6 +31,8 @@ export type NavSnapshot = {
   closures: Closure[];
   /** Street shapes around the route, for the 3D ride view */
   roads: Road[];
+  /** Building outlines along the route, for the 3D ride view. They load last. */
+  buildings: Building[];
   position: Position | null;
   navigating: boolean;
   /** True while a demo ride is moving the position along the route. */
@@ -48,6 +51,7 @@ const INITIAL: NavSnapshot = {
   parking: [],
   closures: [],
   roads: [],
+  buildings: [],
   position: null,
   navigating: false,
   simulated: false,
@@ -150,6 +154,7 @@ export class NavStore {
         parking: [],
         closures: [],
         roads: [],
+        buildings: [],
         extras: 'idle',
       });
       return;
@@ -175,13 +180,7 @@ export class NavStore {
       this.set({ status: 'ready', route, parking: [], closures: [], extras: 'loading' });
       this.updateProgress();
 
-      fetchAlongRoute(route, controller.signal)
-        .then((found) => {
-          if (!controller.signal.aborted) this.set({ ...found, extras: 'ready' });
-        })
-        .catch(() => {
-          if (!controller.signal.aborted) this.set({ extras: 'error' });
-        });
+      this.loadExtras(route, controller);
     } catch (error) {
       if (controller.signal.aborted) return;
       this.set({
@@ -199,13 +198,25 @@ export class NavStore {
       this.planning && !this.planning.signal.aborted ? this.planning : new AbortController();
     this.planning = controller;
     this.set({ extras: 'loading' });
-    fetchAlongRoute(route, controller.signal)
-      .then((found) => {
-        if (!controller.signal.aborted) this.set({ ...found, extras: 'ready' });
-      })
-      .catch(() => {
-        if (!controller.signal.aborted) this.set({ extras: 'error' });
-      });
+    this.loadExtras(route, controller);
+  }
+
+  /** Streets, parking and closures first; then buildings, which are only decoration. */
+  private async loadExtras(route: Route, controller: AbortController) {
+    try {
+      const found = await fetchAlongRoute(route, controller.signal);
+      if (controller.signal.aborted) return;
+      this.set({ ...found, extras: 'ready' });
+    } catch {
+      if (controller.signal.aborted) return;
+      this.set({ extras: 'error' });
+    }
+    try {
+      const buildings = await fetchBuildings(route, controller.signal);
+      if (!controller.signal.aborted) this.set({ buildings });
+    } catch {
+      // The ride view works without buildings.
+    }
   }
 
   // ---- Riding ------------------------------------------------------------------
@@ -253,7 +264,10 @@ export class NavStore {
   private demoStep() {
     const { route } = this.snapshot;
     if (!route) return;
-    this.demoAlong = Math.min(this.demoAlong + DEMO_SPEED_MPS * (DEMO_TICK_MS / 1000), route.distance);
+    this.demoAlong = Math.min(
+      this.demoAlong + DEMO_SPEED_MPS * (DEMO_TICK_MS / 1000),
+      route.distance,
+    );
     this.onPosition(pointAlong(route.points, route.cumulative, this.demoAlong));
     if (this.demoAlong >= route.distance && this.demoTimer) {
       clearInterval(this.demoTimer);
@@ -337,8 +351,7 @@ export class NavStore {
     this.set({
       progress: {
         along: snap.along,
-        heading:
-          position.heading ?? pointAlong(route.points, route.cumulative, snap.along).heading,
+        heading: position.heading ?? pointAlong(route.points, route.cumulative, snap.along).heading,
         remaining,
         remainingTime: route.distance > 0 ? (remaining / route.distance) * route.duration : 0,
         next,

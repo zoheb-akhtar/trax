@@ -59,6 +59,11 @@ export class HttpSource extends SnapshotStore implements DeviceSource {
     this.post('/alarm', { active: false });
   }
 
+  soundAlarm() {
+    this.update({ state: { ...this.snapshot.state, alarm: true } });
+    this.post('/alarm', { active: true });
+  }
+
   private async request(path: string, init?: RequestInit) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);

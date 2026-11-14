@@ -53,7 +53,7 @@ export function TripCard() {
       <View style={styles.summary}>
         {trip.status === 'routing' && (
           <>
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color="#111111" />
             <Text style={styles.body}>Finding a cycling route…</Text>
           </>
         )}
@@ -74,7 +74,7 @@ export function TripCard() {
           <SymbolView
             name={{ ios: 'xmark.circle.fill', android: 'cancel', web: 'cancel' }}
             size={22}
-            tintColor="#8B9099"
+            tintColor="#6B7076"
           />
         </Pressable>
       </View>
@@ -162,7 +162,7 @@ function ParkingLine({
   if (state === 'loading') {
     return (
       <View style={styles.row}>
-        <ActivityIndicator color="#8B9099" size="small" />
+        <ActivityIndicator color="#6B7076" size="small" />
         <Text style={styles.muted}>Loading streets, parking and closures…</Text>
       </View>
     );
@@ -218,7 +218,7 @@ function Toggle({
       <SymbolView
         name={{ ios: 'bicycle', android: 'pedal_bike', web: 'pedal_bike' }}
         size={16}
-        tintColor={value ? '#000' : '#8B9099'}
+        tintColor={value ? '#111111' : '#6B7076'}
       />
       <Text style={[styles.toggleText, value && styles.toggleTextOn]}>{label}</Text>
     </Pressable>
@@ -281,7 +281,7 @@ export function TripSearch({ onDone }: { onDone(): void }) {
       }}
       onChangeText={setText}
       placeholder={placeholder}
-      placeholderTextColor={which === 'from' ? '#C9CDD3' : '#8B9099'}
+      placeholderTextColor={which === 'from' ? '#3A3D42' : '#6B7076'}
       autoFocus={which === 'to'}
       autoCorrect={false}
       returnKeyType="search"
@@ -334,7 +334,7 @@ export function TripSearch({ onDone }: { onDone(): void }) {
   );
 }
 
-const PANEL = 'rgba(12,14,17,0.96)';
+const PANEL = 'rgba(255,255,255,0.97)';
 
 const styles = StyleSheet.create({
   panel: {
@@ -349,11 +349,11 @@ const styles = StyleSheet.create({
   grow: { flex: 1 },
   summary: { flexDirection: 'row', alignItems: 'baseline', gap: 10, minHeight: 40 },
   close: { alignSelf: 'center' },
-  big: { color: '#fff', fontFamily: Type.light, fontSize: 34, lineHeight: 40, letterSpacing: -0.8 },
-  body: { flexShrink: 1, color: '#fff', fontFamily: Type.regular, fontSize: 14, lineHeight: 19 },
-  muted: { color: '#8B9099', fontFamily: Type.regular, fontSize: 13, lineHeight: 18 },
-  credit: { color: '#5E636B', fontFamily: Type.regular, fontSize: 9, textAlign: 'center' },
-  error: { color: '#FF8589', fontFamily: Type.regular, fontSize: 14, lineHeight: 19 },
+  big: { color: '#111111', fontFamily: Type.light, fontSize: 34, lineHeight: 40, letterSpacing: -0.8 },
+  body: { flexShrink: 1, color: '#111111', fontFamily: Type.regular, fontSize: 14, lineHeight: 19 },
+  muted: { color: '#6B7076', fontFamily: Type.regular, fontSize: 13, lineHeight: 18 },
+  credit: { color: '#9A9DA3', fontFamily: Type.regular, fontSize: 9, textAlign: 'center' },
+  error: { color: '#C62F34', fontFamily: Type.regular, fontSize: 14, lineHeight: 19 },
   dot: { width: 8, height: 8, borderRadius: 4, marginHorizontal: 7 },
   badge: {
     width: 22,
@@ -363,7 +363,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: Status.ok,
   },
-  badgeText: { color: '#fff', fontFamily: Type.bold, fontSize: 12 },
+  badgeText: { color: '#FFF', fontFamily: Type.bold, fontSize: 12 },
   actions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   toggle: {
     flexDirection: 'row',
@@ -374,27 +374,27 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Hairline,
-    backgroundColor: '#22252B',
+    backgroundColor: '#E8E7E2',
   },
-  toggleOn: { backgroundColor: '#fff' },
-  toggleText: { color: '#8B9099', fontFamily: Type.medium, fontSize: 13 },
-  toggleTextOn: { color: '#000' },
+  toggleOn: { backgroundColor: '#111111' },
+  toggleText: { color: '#6B7076', fontFamily: Type.medium, fontSize: 13 },
+  toggleTextOn: { color: '#FFF' },
 
   search: {
     borderRadius: 20,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Hairline,
-    backgroundColor: '#111317',
+    backgroundColor: '#FFFFFF',
     paddingHorizontal: 14,
   },
   field: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 50 },
-  input: { flex: 1, color: '#fff', fontFamily: Type.regular, fontSize: 16, paddingVertical: 12 },
-  startDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 3, borderColor: '#fff' },
-  endDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#fff' },
+  input: { flex: 1, color: '#111111', fontFamily: Type.regular, fontSize: 16, paddingVertical: 12 },
+  startDot: { width: 12, height: 12, borderRadius: 6, borderWidth: 3, borderColor: '#111111' },
+  endDot: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#111111' },
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: Hairline, marginLeft: 24 },
   results: { borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: Hairline, paddingVertical: 4 },
   result: { paddingVertical: 10, minHeight: 44, justifyContent: 'center' },
-  resultName: { color: '#fff', fontFamily: Type.medium, fontSize: 15 },
-  resultDetail: { color: '#8B9099', fontFamily: Type.regular, fontSize: 12, marginTop: 1 },
-  resultHint: { color: '#8B9099', fontFamily: Type.regular, fontSize: 13, paddingVertical: 12 },
+  resultName: { color: '#111111', fontFamily: Type.medium, fontSize: 15 },
+  resultDetail: { color: '#6B7076', fontFamily: Type.regular, fontSize: 12, marginTop: 1 },
+  resultHint: { color: '#6B7076', fontFamily: Type.regular, fontSize: 13, paddingVertical: 12 },
 });

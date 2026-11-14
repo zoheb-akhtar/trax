@@ -1,10 +1,20 @@
 import { Image } from 'expo-image';
 import { useEffect, useRef, useState } from 'react';
-import { Alert, FlatList, Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  Alert,
+  FlatList,
+  Modal,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { Screen } from '@/components/screen';
 import { ScreenHeader } from '@/components/screen-header';
+import { SecurityEntryDetail, SecurityEntryList } from '@/components/security-entries';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -14,6 +24,7 @@ import { pictureUri } from '@/history/files';
 import { useRideHistory } from '@/history/history-provider';
 import type { Ride, RideMoment } from '@/history/ride-history';
 import { formatDistance } from '@/nav/geo';
+import { useSecurity } from '@/security/security-provider';
 
 const time = (ts: number, seconds = false) =>
   new Date(ts).toLocaleTimeString([], {
@@ -39,45 +50,100 @@ function averageKmh(ride: Ride) {
 
 export default function HistoryScreen() {
   const { loaded, rides, deleteRide } = useRideHistory();
+  const security = useSecurity();
+  const [tab, setTab] = useState<'rides' | 'security'>('rides');
   const [openId, setOpenId] = useState<string | null>(null);
+  const [openEntryId, setOpenEntryId] = useState<string | null>(null);
   const open = rides.find((ride) => ride.id === openId) ?? null;
+  const openEntry = security.entries.find((entry) => entry.id === openEntryId) ?? null;
 
   return (
     <Screen>
       <ScreenHeader title="History" />
-      <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
-        {loaded && rides.length === 0 && (
-          <ThemedText themeColor="textSecondary">
-            No rides yet. Velo starts recording when you set off and saves the ride when you tap
-            End ride.
-          </ThemedText>
-        )}
-        {rides.map((ride) => (
-          <Pressable key={ride.id} onPress={() => setOpenId(ride.id)} accessibilityRole="button">
-            <Card style={styles.ride}>
-              <View style={styles.rideHeader}>
-                <ThemedText type="label">
-                  {day(ride.startedAt)} · {time(ride.startedAt)}
-                </ThemedText>
-                {ride.endedAt == null && <Text style={styles.recording}>● RECORDING</Text>}
-              </View>
-              <ThemedText style={styles.rideTitle} numberOfLines={1}>
-                {ride.destination ? `To ${ride.destination}` : 'Ride'}
-              </ThemedText>
-              <ThemedText themeColor="textSecondary">
-                {duration(ride)} · {formatDistance(ride.distance)} ·{' '}
-                {ride.closePasses === 1 ? '1 close pass' : `${ride.closePasses} close passes`}
-              </ThemedText>
-            </Card>
+      <View style={styles.tabs} accessibilityRole="tablist">
+        {(['rides', 'security'] as const).map((t) => (
+          <Pressable
+            key={t}
+            onPress={() => setTab(t)}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: tab === t }}
+            style={[styles.tab, tab === t && styles.tabSelected]}
+          >
+            <Text style={[styles.tabText, tab === t && styles.tabTextSelected]}>
+              {t === 'rides' ? `Rides · ${rides.length}` : `Security · ${security.entries.length}`}
+            </Text>
           </Pressable>
         ))}
-      </ScrollView>
+      </View>
+
+      {tab === 'security' ? (
+        <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+          {security.loaded && security.entries.length === 0 ? (
+            <ThemedText themeColor="textSecondary">
+              Nothing yet. Arming, disarming and every alarm are recorded here, with pictures when
+              Velo&apos;s camera is connected.
+            </ThemedText>
+          ) : (
+            <SecurityEntryList
+              entries={security.entries}
+              onOpen={(entry) => setOpenEntryId(entry.id)}
+            />
+          )}
+        </ScrollView>
+      ) : (
+        <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+          {loaded && rides.length === 0 && (
+            <ThemedText themeColor="textSecondary">
+              No rides yet. Velo starts recording when you set off and saves the ride when you tap
+              End ride.
+            </ThemedText>
+          )}
+          {rides.map((ride) => (
+            <Pressable key={ride.id} onPress={() => setOpenId(ride.id)} accessibilityRole="button">
+              <Card style={styles.ride}>
+                <View style={styles.rideHeader}>
+                  <ThemedText type="label">
+                    {day(ride.startedAt)} · {time(ride.startedAt)}
+                  </ThemedText>
+                  {ride.endedAt == null && <Text style={styles.recording}>● RECORDING</Text>}
+                </View>
+                <ThemedText style={styles.rideTitle} numberOfLines={1}>
+                  {ride.destination ? `To ${ride.destination}` : 'Ride'}
+                </ThemedText>
+                <ThemedText themeColor="textSecondary">
+                  {duration(ride)} · {formatDistance(ride.distance)} ·{' '}
+                  {ride.closePasses === 1 ? '1 close pass' : `${ride.closePasses} close passes`}
+                </ThemedText>
+              </Card>
+            </Pressable>
+          ))}
+        </ScrollView>
+      )}
+
+      <Modal
+        visible={openEntry !== null}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setOpenEntryId(null)}
+      >
+        {openEntry && (
+          <SecurityEntryDetail
+            entry={openEntry}
+            onClose={() => setOpenEntryId(null)}
+            onDelete={() => {
+              setOpenEntryId(null);
+              security.deleteEntry(openEntry.id);
+            }}
+          />
+        )}
+      </Modal>
 
       <Modal
         visible={open !== null}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setOpenId(null)}>
+        onRequestClose={() => setOpenId(null)}
+      >
         {open && (
           <RideDetail
             key={open.id}
@@ -144,7 +210,12 @@ function RideDetail({
     setPlaying(false);
     setCamera(moment.camera);
     const sameCamera = pictures.filter((m) => m.camera === moment.camera);
-    setIndex(Math.max(sameCamera.findIndex((m) => m.id === moment.id), 0));
+    setIndex(
+      Math.max(
+        sameCamera.findIndex((m) => m.id === moment.id),
+        0,
+      ),
+    );
   };
 
   const confirmDelete = () =>
@@ -236,7 +307,8 @@ function RideDetail({
                     setPlaying(false);
                     setIndex(i);
                   }}
-                  accessibilityLabel={`Picture at ${time(item.ts, true)}`}>
+                  accessibilityLabel={`Picture at ${time(item.ts, true)}`}
+                >
                   <Image
                     source={{ uri: pictureUri(item.file!) }}
                     style={[
@@ -267,7 +339,8 @@ function RideDetail({
                 key={moment.id}
                 disabled={!moment.file}
                 onPress={() => show(moment)}
-                style={[styles.pass, i > 0 && styles.passDivider]}>
+                style={[styles.pass, i > 0 && styles.passDivider]}
+              >
                 <ThemedText>
                   {time(moment.ts, true)} · {moment.camera === 'rear' ? 'from behind' : 'ahead'}
                 </ThemedText>
@@ -299,13 +372,25 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
-  list: { gap: Spacing.two, paddingBottom: Spacing.six },
+  tabs: {
+    flexDirection: 'row',
+    padding: 3,
+    borderRadius: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Hairline,
+    backgroundColor: '#FFFFFF',
+  },
+  tab: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 11 },
+  tabSelected: { backgroundColor: '#111111' },
+  tabText: { color: '#6B7076', fontFamily: Type.medium, fontSize: 13 },
+  tabTextSelected: { color: '#FFF' },
+  list: { gap: Spacing.two, paddingBottom: Spacing.six + Spacing.four },
   ride: { gap: 4 },
   rideHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   rideTitle: { fontFamily: Type.medium, fontSize: 18, lineHeight: 24 },
   recording: { color: Status.danger, fontFamily: Type.semibold, fontSize: 10, letterSpacing: 1.2 },
   grow: { flex: 1 },
-  sheet: { flex: 1, backgroundColor: '#07080B', paddingHorizontal: Spacing.three },
+  sheet: { flex: 1, backgroundColor: '#F2F1ED', paddingHorizontal: Spacing.three },
   sheetHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -321,15 +406,15 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Hairline,
-    backgroundColor: '#111317',
+    backgroundColor: '#FFFFFF',
   },
-  statValue: { color: '#fff', fontFamily: Type.regular, fontSize: 18 },
+  statValue: { color: '#111111', fontFamily: Type.regular, fontSize: 18 },
   viewer: {
     width: '100%',
     aspectRatio: 4 / 3,
     borderRadius: 20,
     overflow: 'hidden',
-    backgroundColor: '#111317',
+    backgroundColor: '#FFFFFF',
   },
   viewerTop: {
     position: 'absolute',
@@ -355,7 +440,7 @@ const styles = StyleSheet.create({
   controls: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   count: {
     flex: 1,
-    color: '#8B9099',
+    color: '#6B7076',
     fontFamily: Type.regular,
     fontSize: 13,
     fontVariant: ['tabular-nums'],
@@ -367,10 +452,10 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     borderWidth: 2,
     borderColor: 'transparent',
-    backgroundColor: '#111317',
+    backgroundColor: '#FFFFFF',
   },
   thumbDanger: { borderColor: Status.danger },
-  thumbSelected: { borderColor: '#fff' },
+  thumbSelected: { borderColor: '#111111' },
   passes: { gap: 0, paddingVertical: 0 },
   pass: {
     flexDirection: 'row',

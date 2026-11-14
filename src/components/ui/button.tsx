@@ -11,7 +11,7 @@ const PRESS = { duration: 120 };
 type Props = {
   title: string;
   onPress(): void;
-  /** primary: white, the one main action. secondary: quiet grey. */
+  /** primary: black, the one main action. secondary: quiet grey. */
   variant?: 'primary' | 'danger' | 'secondary' | 'onDanger';
   size?: 'small' | 'regular' | 'large';
   disabled?: boolean;
@@ -23,15 +23,15 @@ export function Button({ title, onPress, variant = 'primary', size = 'regular', 
   const pressStyle = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 
   const background = {
-    primary: '#ffffff',
+    primary: '#111111',
     danger: Status.danger,
     secondary: theme.backgroundSelected,
     onDanger: '#ffffff',
   }[variant];
   const color = {
-    primary: '#000000',
+    primary: '#ffffff',
     danger: '#ffffff',
-    secondary: '#ffffff',
+    secondary: '#111111',
     onDanger: Status.danger,
   }[variant];
 

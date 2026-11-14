@@ -5,10 +5,10 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { MaxContentWidth, Spacing } from '@/constants/theme';
 
-/** Dark, safe-area-aware page container with a soft glow from the top. */
+/** Light, safe-area-aware page container. */
 export function Screen({ children }: { children: ReactNode }) {
   return (
-    <LinearGradient colors={['#15181D', '#050607']} end={{ x: 0.5, y: 0.55 }} style={styles.container}>
+    <LinearGradient colors={['#F8F7F4', '#F2F1ED']} end={{ x: 0.5, y: 0.55 }} style={styles.container}>
       <SafeAreaView style={styles.safeArea}>{children}</SafeAreaView>
     </LinearGradient>
   );

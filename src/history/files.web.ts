@@ -9,3 +9,9 @@ export function pictureUri(relativePath: string) {
 }
 
 export function deleteRidePictures(_rideId: string) {}
+
+export async function savePictureTo(_url: string, _folder: string, _name: string) {
+  return null as string | null;
+}
+
+export function deletePictureFolder(_folder: string) {}

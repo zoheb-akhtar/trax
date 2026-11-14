@@ -68,6 +68,9 @@ export type RoadKind = 'major' | 'minor' | 'cycle' | 'foot';
 /** A stretch of street, for drawing the ground in the 3D ride view. */
 export type Road = { kind: RoadKind; points: LatLon[] };
 
+/** A building's outline and height, for the 3D ride view. */
+export type Building = { points: LatLon[]; height: number };
+
 export type Position = LatLon & {
   /** Degrees clockwise from north, when known */
   heading: number | null;

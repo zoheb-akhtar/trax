@@ -73,4 +73,12 @@ Body: `{ "mode": "ride" }` or `{ "mode": "security" }`. Security mode arms the I
 
 ## `POST /alarm`
 
-Body: `{ "active": false }` silences the alarm.
+Body: `{ "active": false }` silences the alarm. `{ "active": true }` sounds it on purpose (the
+app's "Sound alarm" button), without adding an event.
+
+## Pictures of security events
+
+When a new event appears in `/state`, the app immediately fetches `/snapshot` from each camera
+and keeps those pictures with the event. The picture is therefore up to a quarter of a second
+after the movement. Better: have the device save the frame at the moment the sensor trips and
+serve that; tell the app team and the app will use it.

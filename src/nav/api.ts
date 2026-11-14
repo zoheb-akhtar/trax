@@ -8,6 +8,7 @@
  */
 import { cumulativeDistances, decodePolyline6, distance, snapToRoute } from './geo';
 import type {
+  Building,
   Closure,
   LatLon,
   Maneuver,
@@ -72,6 +73,22 @@ export async function searchPlaces(
     seen.add(key);
     return true;
   });
+}
+
+/** A short name for a spot, such as its street. Null if nothing is found. */
+export async function placeName(at: LatLon, signal?: AbortSignal): Promise<string | null> {
+  try {
+    const res = await fetch(`${PHOTON.replace(/api\/$/, 'reverse')}?lat=${at.lat}&lon=${at.lon}`, {
+      signal,
+      headers: IDENTIFY,
+    });
+    if (!res.ok) return null;
+    const p = (await res.json()).features?.[0]?.properties ?? {};
+    const street = [p.housenumber, p.street].filter(Boolean).join(' ');
+    return [p.name, street || null].filter(Boolean)[0] ?? p.city ?? null;
+  } catch {
+    return null;
+  }
 }
 
 // ---- Bicycle routing ----------------------------------------------------------------
@@ -172,7 +189,14 @@ export async function fetchRoute(
 
 // ---- Bike parking and closed roads ---------------------------------------------------
 
-const GOOD_PARKING = new Set(['stands', 'wide_stands', 'safe_loops', 'lockers', 'shed', 'building']);
+const GOOD_PARKING = new Set([
+  'stands',
+  'wide_stands',
+  'safe_loops',
+  'lockers',
+  'shed',
+  'building',
+]);
 const POOR_PARKING = new Set(['wall_loops', 'ground_slots', 'anchors', 'rack']);
 const SHELTERED = new Set(['shed', 'building', 'lockers']);
 /** Roads a cyclist would actually use; "access=no" on a driveway is not a closure. */
@@ -345,8 +369,7 @@ export async function fetchAlongRoute(
       const p = toParking(element, destination);
       if (!p) continue;
       const nearDestination = p.fromDestination <= PARKING_NEAR_DESTINATION_M;
-      const nearRoute =
-        snapToRoute(route.points, route.cumulative, p).off <= PARKING_NEAR_ROUTE_M;
+      const nearRoute = snapToRoute(route.points, route.cumulative, p).off <= PARKING_NEAR_ROUTE_M;
       if (nearDestination || nearRoute) parking.push(p);
     } else if (element.type === 'way' && element.geometry?.length > 1) {
       const construction = tags.highway === 'construction';
@@ -371,4 +394,52 @@ export async function fetchAlongRoute(
     closures,
     roads,
   };
+}
+
+// ---- Buildings ---------------------------------------------------------------------
+
+/** Buildings further than this from the route never come into the ride view. */
+const BUILDINGS_NEAR_ROUTE_M = 110;
+const METRES_PER_LEVEL = 3.2;
+const DEFAULT_HEIGHT_M = 9;
+
+/**
+ * Building outlines along the route, for the 3D ride view. A separate request
+ * from streets and parking because a city has thousands of them.
+ */
+export async function fetchBuildings(route: Route, signal?: AbortSignal): Promise<Building[]> {
+  const margin = 0.0015; // about 150 m
+  const lats = route.points.map((p) => p.lat);
+  const lons = route.points.map((p) => p.lon);
+  const box = [
+    Math.min(...lats) - margin,
+    Math.min(...lons) - margin,
+    Math.max(...lats) + margin,
+    Math.max(...lons) + margin,
+  ]
+    .map((n) => n.toFixed(5))
+    .join(',');
+  const json = await overpass(
+    `[out:json][timeout:25];way["building"](${box});out tags geom 30000;`,
+    signal,
+  );
+
+  const buildings: Building[] = [];
+  for (const element of json.elements ?? []) {
+    const geometry: LatLon[] | undefined = element.geometry;
+    if (!geometry || geometry.length < 4) continue;
+    const mid = centre(element);
+    if (!mid || snapToRoute(route.points, route.cumulative, mid).off > BUILDINGS_NEAR_ROUTE_M) {
+      continue;
+    }
+    const tags = element.tags ?? {};
+    const height =
+      Number.parseFloat(tags.height) ||
+      Number.parseFloat(tags['building:levels']) * METRES_PER_LEVEL ||
+      DEFAULT_HEIGHT_M;
+    // Outlines repeat their first point at the end; drop the repeat.
+    const points = geometry.slice(0, -1).map((g) => ({ lat: g.lat, lon: g.lon }));
+    buildings.push({ points, height });
+  }
+  return buildings;
 }

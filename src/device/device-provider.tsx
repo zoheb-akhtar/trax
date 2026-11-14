@@ -26,6 +26,7 @@ type DeviceContextValue = DeviceSnapshot & {
   snapshotUrlFor(camera: CameraId): string | null;
   setMode(mode: DeviceMode): void;
   silenceAlarm(): void;
+  soundAlarm(): void;
   /** Only available when simulating */
   simulateTamper: (() => void) | null;
 };
@@ -88,6 +89,7 @@ function ConnectedProvider({
     snapshotUrlFor: (camera) => source.snapshotUrlFor(camera),
     setMode: (mode) => source.setMode(mode),
     silenceAlarm: () => source.silenceAlarm(),
+    soundAlarm: () => source.soundAlarm(),
     simulateTamper: source instanceof MockSource ? () => source.simulateTamper() : null,
   };
 

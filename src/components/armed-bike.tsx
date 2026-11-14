@@ -13,8 +13,8 @@ import Svg, { Defs, Ellipse, Path, RadialGradient, Stop } from 'react-native-svg
 type P = readonly [number, number, number]; // x (along the bike), y (up), z (across)
 type Segment = readonly [P, P];
 
-const GLOW = '#3DFF9A';
-const CORE = '#C9FFE2';
+const GLOW = '#1DB870';
+const CORE = '#0C8A4E';
 
 const WHEEL_R = 0.34;
 const REAR: P = [-0.52, WHEEL_R, 0];

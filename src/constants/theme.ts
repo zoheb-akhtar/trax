@@ -9,11 +9,11 @@ import { Platform } from 'react-native';
 
 export const Colors = {
   light: {
-    text: '#000000',
-    background: '#ffffff',
-    backgroundElement: '#F0F0F3',
-    backgroundSelected: '#E0E1E6',
-    textSecondary: '#60646C',
+    text: '#111111',
+    background: '#F2F1ED',
+    backgroundElement: '#FFFFFF',
+    backgroundSelected: '#E8E7E2',
+    textSecondary: '#6B7076',
   },
   dark: {
     text: '#ffffff',
@@ -25,19 +25,19 @@ export const Colors = {
 } as const;
 
 /**
- * Montserrat, one family name per weight. With a custom font, pick the weight
+ * Inter, one family name per weight. With a custom font, pick the weight
  * through fontFamily and leave fontWeight unset, or the OS fakes a bold.
  */
 export const Type = {
-  light: 'Montserrat_300Light',
-  regular: 'Montserrat_400Regular',
-  medium: 'Montserrat_500Medium',
-  semibold: 'Montserrat_600SemiBold',
-  bold: 'Montserrat_700Bold',
+  light: 'Inter_300Light',
+  regular: 'Inter_400Regular',
+  medium: 'Inter_500Medium',
+  semibold: 'Inter_600SemiBold',
+  bold: 'Inter_700Bold',
 } as const;
 
-/** Thin outline that separates dark cards from the dark background. */
-export const Hairline = 'rgba(255,255,255,0.07)';
+/** Thin outline around cards and between rows. */
+export const Hairline = 'rgba(0,0,0,0.09)';
 
 /** Status colours, the same in light and dark mode. */
 export const Status = {
@@ -46,7 +46,7 @@ export const Status = {
   warn: '#E8930C',
   danger: '#E5484D',
   /** Other cyclists, in the 3D view and on the camera picture */
-  cyclist: '#3DD6A3',
+  cyclist: '#12B886',
 } as const;
 
 export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;

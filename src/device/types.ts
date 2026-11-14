@@ -54,6 +54,8 @@ export interface DeviceSource {
   getSnapshot(): DeviceSnapshot;
   setMode(mode: DeviceMode): void;
   silenceAlarm(): void;
+  /** Sets the alarm off on purpose, to find the bike or scare someone away */
+  soundAlarm(): void;
   /** MJPEG stream URL for a camera, or null when there is no real video (simulation) */
   streamUrlFor(camera: CameraId): string | null;
   /** URL of one still picture from a camera, or null when there is no real video */

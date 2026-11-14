@@ -30,3 +30,24 @@ export function deleteRidePictures(rideId: string) {
     // Nothing to clean up, or the folder is already gone.
   }
 }
+
+/** Like savePicture, for any folder under the documents folder (e.g. "security/evt-1"). */
+export async function savePictureTo(url: string, folder: string, name: string) {
+  try {
+    const directory = new Directory(Paths.document, folder);
+    directory.create({ intermediates: true, idempotent: true });
+    await File.downloadFileAsync(url, new File(directory, name));
+    return `${folder}/${name}`;
+  } catch {
+    return null;
+  }
+}
+
+export function deletePictureFolder(folder: string) {
+  try {
+    const directory = new Directory(Paths.document, folder);
+    if (directory.exists) directory.delete();
+  } catch {
+    // Nothing to clean up, or the folder is already gone.
+  }
+}

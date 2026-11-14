@@ -22,8 +22,8 @@ export function ArmControl({ armed, onToggle }: { armed: boolean; onToggle(): vo
 
   const ringStyle = useAnimatedStyle(() => ({
     transform: [{ scale: pressed.value }],
-    borderColor: interpolateColor(progress.value, [0, 1], ['#2E3238', Status.ok]),
-    backgroundColor: interpolateColor(progress.value, [0, 1], ['#15171B', '#0F2A1B']),
+    borderColor: interpolateColor(progress.value, [0, 1], ['#D6D5CF', Status.ok]),
+    backgroundColor: interpolateColor(progress.value, [0, 1], ['#FFFFFF', '#E2F4E9']),
   }));
   const haloStyle = useAnimatedStyle(() => ({
     opacity: progress.value * 0.35,
@@ -55,7 +55,7 @@ export function ArmControl({ armed, onToggle }: { armed: boolean; onToggle(): vo
               : { ios: 'lock.open.fill', android: 'lock_open', web: 'lock_open' }
           }
           size={64}
-          tintColor={armed ? Status.ok : '#9BA1AA'}
+          tintColor={armed ? Status.ok : '#8A8E94'}
         />
       </Animated.View>
     </AnimatedPressable>

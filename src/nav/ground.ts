@@ -1,4 +1,4 @@
-import type { LatLon, Road, RoadKind, Route } from './types';
+import type { Building, LatLon, Road, RoadKind, Route } from './types';
 
 /**
  * Streets and the route, converted once into flat metres (east, north) from a
@@ -20,7 +20,11 @@ export type Ground = {
   metresPerLon: number;
   route: GroundLine;
   roads: Record<RoadKind, GroundLine[]>;
+  buildings: GroundBuilding[];
 };
+
+/** A building outline in metres, with its height and centre. */
+export type GroundBuilding = GroundLine & { height: number; centreE: number; centreN: number };
 
 export type Pose = { east: number; north: number; heading: number };
 
@@ -42,7 +46,7 @@ function toLine(
   };
 }
 
-export function buildGround(route: Route, roads: Road[]): Ground {
+export function buildGround(route: Route, roads: Road[], buildings: Building[] = []): Ground {
   const origin = route.points[0];
   const frame = {
     origin,
@@ -56,7 +60,16 @@ export function buildGround(route: Route, roads: Road[]): Ground {
     foot: [],
   };
   for (const road of roads) byKind[road.kind].push(toLine(road.points, frame));
-  return { ...frame, route: toLine(route.points, frame), roads: byKind };
+  const blocks = buildings.map((building): GroundBuilding => {
+    const line = toLine(building.points, frame);
+    return {
+      ...line,
+      height: building.height,
+      centreE: (line.minE + line.maxE) / 2,
+      centreN: (line.minN + line.maxN) / 2,
+    };
+  });
+  return { ...frame, route: toLine(route.points, frame), roads: byKind, buildings: blocks };
 }
 
 export function toPose(ground: Ground, position: LatLon, heading: number): Pose {
