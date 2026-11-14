@@ -68,7 +68,9 @@ export const SIGNAL_DISTANCE_M = 80;
 const ARRIVED_LINGER_MS = 8000;
 const DEMO_SPEED_MPS = 9;
 const DEMO_TICK_MS = 200;
-const REROUTE_EVERY_MS = 15000;
+const REROUTE_EVERY_MS = 8000;
+/** How long the rider must stay off the route before a new one is planned. */
+const OFF_ROUTE_WAIT_MS = 3500;
 
 /** Trip planning and turn-by-turn state. One instance for the whole app. */
 export class NavStore {
@@ -78,10 +80,11 @@ export class NavStore {
   private watcher: Location.LocationSubscription | null = null;
   private demoTimer: ReturnType<typeof setInterval> | null = null;
   private demoAlong = 0;
-  private offRouteCount = 0;
-  private lastReroute = 0;
   private signalledAt: number | null = null;
   private rerouting = false;
+  private offRouteTimer: ReturnType<typeof setTimeout> | null = null;
+  /** The route whose surroundings (streets, parking, buildings) were last requested. */
+  private loadedFor: Route | null = null;
   private arrivalTimer: ReturnType<typeof setTimeout> | null = null;
 
   subscribe = (listener: () => void) => {
@@ -201,8 +204,17 @@ export class NavStore {
     this.loadExtras(route, controller);
   }
 
+  /** Map data for a new route mid-ride, without disturbing the trip being followed. */
+  private loadMap(route: Route) {
+    const controller =
+      this.planning && !this.planning.signal.aborted ? this.planning : new AbortController();
+    this.planning = controller;
+    this.loadExtras(route, controller);
+  }
+
   /** Streets, parking and closures first; then buildings, which are only decoration. */
   private async loadExtras(route: Route, controller: AbortController) {
+    this.loadedFor = route;
     try {
       const found = await fetchAlongRoute(route, controller.signal);
       if (controller.signal.aborted) return;
@@ -226,7 +238,6 @@ export class NavStore {
     if (!this.snapshot.route) return;
     this.stopTracking();
     this.signalledAt = null;
-    this.offRouteCount = 0;
     this.set({ navigating: true, simulated: demo });
 
     if (demo) {
@@ -253,6 +264,7 @@ export class NavStore {
   }
 
   private stopTracking() {
+    this.cancelOffRouteCheck();
     if (this.arrivalTimer) clearTimeout(this.arrivalTimer);
     this.arrivalTimer = null;
     this.watcher?.remove();
@@ -304,18 +316,28 @@ export class NavStore {
       haptic.tap();
     }
 
-    // Strayed from the route for a few fixes in a row: plan again from here.
+    // Strayed from the route: if still off it a few seconds from now, plan again from here.
+    // This runs on a timer, not on GPS fixes, so it also works when the rider has stopped.
     if (simulated) return;
-    this.offRouteCount = progress.offRoute ? this.offRouteCount + 1 : 0;
-    if (
-      this.offRouteCount >= 3 &&
-      progress.offBy < REROUTE_WITHIN_M &&
-      Date.now() - this.lastReroute > REROUTE_EVERY_MS
-    ) {
-      this.lastReroute = Date.now();
-      this.offRouteCount = 0;
-      this.reroute(position);
+    if (!progress.offRoute) {
+      this.cancelOffRouteCheck();
+    } else if (!this.offRouteTimer) {
+      this.offRouteTimer = setTimeout(() => this.checkOffRoute(), OFF_ROUTE_WAIT_MS);
     }
+  }
+
+  private cancelOffRouteCheck() {
+    if (this.offRouteTimer) clearTimeout(this.offRouteTimer);
+    this.offRouteTimer = null;
+  }
+
+  private checkOffRoute() {
+    this.offRouteTimer = null;
+    const { progress, position, navigating, simulated } = this.snapshot;
+    if (!navigating || simulated || !progress?.offRoute || !position) return;
+    if (progress.offBy < REROUTE_WITHIN_M) this.reroute(position);
+    // Look again later, in case that failed or the rider keeps straying.
+    this.offRouteTimer = setTimeout(() => this.checkOffRoute(), REROUTE_EVERY_MS);
   }
 
   /** Plans a fresh route from where the rider is now. Keeps the current one if that fails. */
@@ -327,7 +349,10 @@ export class NavStore {
     try {
       const route = await fetchRoute(from, destination, bikeLanes);
       if (!this.snapshot.navigating || this.snapshot.destination !== destination) return;
+      this.signalledAt = null;
       this.set({ route });
+      // The new route may run through streets that were never loaded for the old one.
+      if (!covers(this.loadedFor, route)) this.loadMap(route);
     } catch {
       // Keep following the old route; the next off-route check tries again.
     } finally {
@@ -360,7 +385,8 @@ export class NavStore {
         offRoute: snap.off > OFF_ROUTE_M,
         offBy: snap.off,
         rerouting: this.rerouting,
-        arrived: remaining < ARRIVE_M,
+        // Near the end of the route and actually on it, not merely level with it a street away.
+        arrived: remaining < ARRIVE_M && snap.off < OFF_ROUTE_M,
       },
     });
   }
@@ -373,4 +399,19 @@ function toPosition(fix: Location.LocationObject): Position {
     lon: fix.coords.longitude,
     heading: heading != null && heading >= 0 ? heading : null,
   };
+}
+
+/** Whether the map data loaded around one route (its box plus a margin) also covers another. */
+function covers(loaded: Route | null, route: Route) {
+  if (!loaded) return false;
+  const margin = 0.0025; // inside the 400 m the data was fetched with
+  const lats = loaded.points.map((p) => p.lat);
+  const lons = loaded.points.map((p) => p.lon);
+  const south = Math.min(...lats) - margin;
+  const north = Math.max(...lats) + margin;
+  const west = Math.min(...lons) - margin;
+  const east = Math.max(...lons) + margin;
+  return route.points.every(
+    (p) => p.lat >= south && p.lat <= north && p.lon >= west && p.lon <= east,
+  );
 }

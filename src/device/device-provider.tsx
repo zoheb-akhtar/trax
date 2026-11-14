@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import {
   createContext,
   use,
@@ -32,6 +33,7 @@ type DeviceContextValue = DeviceSnapshot & {
 };
 
 const STORAGE_KEY = 'velo.device-settings';
+const KEEP_AWAKE_TAG = 'velo-ride';
 const DEFAULT_SETTINGS: DeviceSettings = { source: 'simulated', host: '' };
 
 const DeviceContext = createContext<DeviceContextValue | null>(null);
@@ -41,7 +43,9 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     AsyncStorage.getItem(STORAGE_KEY)
-      .then((raw) => setSettings(raw ? { ...DEFAULT_SETTINGS, ...JSON.parse(raw) } : DEFAULT_SETTINGS))
+      .then((raw) =>
+        setSettings(raw ? { ...DEFAULT_SETTINGS, ...JSON.parse(raw) } : DEFAULT_SETTINGS),
+      )
       .catch(() => setSettings(DEFAULT_SETTINGS));
   }, []);
 
@@ -53,7 +57,8 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
       updateSettings={(next) => {
         setSettings(next);
         AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next)).catch(() => {});
-      }}>
+      }}
+    >
       {children}
     </ConnectedProvider>
   );
@@ -80,6 +85,16 @@ function ConnectedProvider({
   }, [source]);
 
   const snapshot = useSyncExternalStore(source.subscribe, source.getSnapshot, source.getSnapshot);
+
+  // A phone that locks mid-ride stops showing turns and warnings, so keep the screen on.
+  const riding = snapshot.state.mode === 'ride';
+  useEffect(() => {
+    if (!riding) return;
+    activateKeepAwakeAsync(KEEP_AWAKE_TAG).catch(() => {});
+    return () => {
+      deactivateKeepAwake(KEEP_AWAKE_TAG).catch(() => {});
+    };
+  }, [riding]);
 
   const value: DeviceContextValue = {
     ...snapshot,

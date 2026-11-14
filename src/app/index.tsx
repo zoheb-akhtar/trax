@@ -4,11 +4,11 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown, FadeOut, FadeOutDown } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { ArmedBike } from '@/components/armed-bike';
 import { CameraFeed } from '@/components/camera-feed';
 import { CameraSwitch } from '@/components/camera-switch';
 import { Chip } from '@/components/chip';
 import { EdgeGlow } from '@/components/edge-glow';
+import { ParkedHome } from '@/components/parked-home';
 import { ProximityScene } from '@/components/proximity-scene';
 import { ThemedText } from '@/components/themed-text';
 import { TripCard, TripSearch } from '@/components/trip-planner';
@@ -127,23 +127,14 @@ export default function RideScreen() {
     <View style={styles.screen}>
       <View style={styles.stage}>
         {riding ? (
-          <ProximityScene detections={detections} speedKmh={state.speedKmh} ground={ground} at={at} />
+          <ProximityScene
+            detections={detections}
+            speedKmh={state.speedKmh}
+            ground={ground}
+            at={at}
+          />
         ) : (
-          <View style={[styles.parked, { paddingTop: insets.top }]}>
-            <View style={styles.parkedBike}>
-              <ArmedBike size={280} />
-            </View>
-            <ThemedText type="label" style={styles.centred}>
-              Parked
-            </ThemedText>
-            <ThemedText type="title" style={styles.centred}>
-              Armed
-            </ThemedText>
-            <ThemedText themeColor="textSecondary" style={[styles.parkedText, styles.centred]}>
-              Velo is guarding your bike.
-            </ThemedText>
-            <Button title="Start ride" size="large" onPress={() => setMode('ride')} />
-          </View>
+          <ParkedHome onPlan={() => setPlanning(true)} />
         )}
 
         {riding && (
@@ -166,7 +157,8 @@ export default function RideScreen() {
                 entering={FadeInDown.duration(180)}
                 exiting={FadeOutDown.duration(250)}
                 style={styles.pip}
-                pointerEvents="none">
+                pointerEvents="none"
+              >
                 {feed}
                 <View style={styles.pipLabel}>
                   <Chip>{camera}</Chip>
@@ -189,7 +181,8 @@ export default function RideScreen() {
                 <Animated.View
                   entering={FadeIn.duration(120)}
                   exiting={FadeOut.duration(300)}
-                  style={styles.notice}>
+                  style={styles.notice}
+                >
                   <Text style={styles.noticeText}>Vehicle close {threat.where}</Text>
                 </Animated.View>
               )}
@@ -197,13 +190,16 @@ export default function RideScreen() {
                 <Animated.View
                   entering={FadeIn.duration(120)}
                   exiting={FadeOut.duration(300)}
-                  style={[styles.notice, styles.cyclistNotice]}>
+                  style={[styles.notice, styles.cyclistNotice]}
+                >
                   <Text style={[styles.noticeText, styles.cyclistText]}>
                     Cyclist {cyclist.z > 0 ? 'behind' : 'ahead'}
                   </Text>
                 </Animated.View>
               )}
-              {quiet && connection !== 'connected' && <Chip dotColor={chip.color}>{chip.label}</Chip>}
+              {quiet && connection !== 'connected' && (
+                <Chip dotColor={chip.color}>{chip.label}</Chip>
+              )}
             </View>
           </>
         )}
@@ -266,7 +262,8 @@ export default function RideScreen() {
                 style={styles.whereTo}
                 onPress={() => setPlanning(true)}
                 accessibilityRole="button"
-                accessibilityLabel="Choose a destination">
+                accessibilityLabel="Choose a destination"
+              >
                 <SymbolView
                   name={{ ios: 'magnifyingglass', android: 'search', web: 'search' }}
                   size={16}
@@ -292,11 +289,17 @@ export default function RideScreen() {
         visible={planning}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setPlanning(false)}>
+        onRequestClose={() => setPlanning(false)}
+      >
         <SafeAreaView style={styles.sheet}>
           <View style={styles.sheetHeader}>
             <ThemedText type="subtitle">Where to?</ThemedText>
-            <Button title="Cancel" size="small" variant="secondary" onPress={() => setPlanning(false)} />
+            <Button
+              title="Cancel"
+              size="small"
+              variant="secondary"
+              onPress={() => setPlanning(false)}
+            />
           </View>
           {planning && <TripSearch onDone={() => setPlanning(false)} />}
         </SafeAreaView>
@@ -363,15 +366,6 @@ const styles = StyleSheet.create({
   cyclistNotice: { backgroundColor: Status.cyclist },
   cyclistText: { color: '#04130E' },
   noticeText: { color: '#FFF', fontFamily: Type.semibold, fontSize: 13, letterSpacing: 0.2 },
-  parked: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.two,
-    justifyContent: 'center',
-  },
-  parkedBike: { alignItems: 'center', marginBottom: -Spacing.three },
-  centred: { textAlign: 'center' },
-  parkedText: { marginBottom: Spacing.three },
   bottom: { paddingHorizontal: Spacing.three, gap: Spacing.two },
   feed: {
     width: '100%',

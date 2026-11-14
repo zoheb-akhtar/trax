@@ -19,6 +19,8 @@ export type Ground = {
   metresPerLat: number;
   metresPerLon: number;
   route: GroundLine;
+  /** The route, run on a little past each end, for the lane drawn underneath it */
+  routeBed: GroundLine;
   roads: Record<RoadKind, GroundLine[]>;
   buildings: GroundBuilding[];
 };
@@ -69,7 +71,13 @@ export function buildGround(route: Route, roads: Road[], buildings: Building[] =
       centreN: (line.minN + line.maxN) / 2,
     };
   });
-  return { ...frame, route: toLine(route.points, frame), roads: byKind, buildings: blocks };
+  return {
+    ...frame,
+    route: toLine(route.points, frame),
+    routeBed: toLine(extended(route.points), frame),
+    roads: byKind,
+    buildings: blocks,
+  };
 }
 
 export function toPose(ground: Ground, position: LatLon, heading: number): Pose {
@@ -78,4 +86,21 @@ export function toPose(ground: Ground, position: LatLon, heading: number): Pose 
     north: (position.lat - ground.origin.lat) * ground.metresPerLat,
     heading,
   };
+}
+
+/** The points with one more added at each end, continuing straight on for about 25 m. */
+function extended(points: LatLon[]): LatLon[] {
+  if (points.length < 2) return points;
+  const beyond = (end: LatLon, before: LatLon): LatLon => {
+    const dLat = end.lat - before.lat;
+    const dLon = (end.lon - before.lon) * Math.cos((end.lat * Math.PI) / 180);
+    const metres = Math.hypot(dLat, dLon) * METRES_PER_DEGREE || 1;
+    const scale = 25 / metres;
+    return {
+      lat: end.lat + (end.lat - before.lat) * scale,
+      lon: end.lon + (end.lon - before.lon) * scale,
+    };
+  };
+  const last = points.length - 1;
+  return [beyond(points[0], points[1]), ...points, beyond(points[last], points[last - 1])];
 }

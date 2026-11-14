@@ -276,54 +276,68 @@ const DASH_LENGTH = 2.6;
 const DASH_COUNT = 18;
 /** Road markings start just in front of the camera and run to the fog. */
 const ROAD_NEAR_Z = 10.5;
-const LANE_SEGMENTS: [number, number, number][] = [
-  // [from z, to z, opacity]
-  [ROAD_NEAR_Z, -12, 1],
-  [-12, -30, 0.7],
-  [-30, -50, 0.4],
-  [-50, -75, 0.15],
-];
 
-function Road({ project, dashOffset }: { project: Projector; dashOffset: number }) {
-  const strip = (x: number, halfWidth: number, zFrom: number, zTo: number) =>
+/** Where the plain road's surfaces end, in metres ahead; the haze hides the far edge. */
+const ROAD_FAR_Z = -95;
+/** Lane edges across the road, in metres from the rider (negative is left). */
+const KERB_LEFT = -8;
+const LANE_DIVIDER = -4.55;
+const BIKE_LANE_LEFT = -1.1;
+const BIKE_LANE_RIGHT = 1.1;
+const PAVEMENT_RIGHT = 3.4;
+
+/**
+ * The road shown when no route is planned: two traffic lanes on the left, the
+ * bike lane the rider is in, and a pavement on the right.
+ */
+function Road({
+  project,
+  dashOffset,
+  width,
+  haze = true,
+}: {
+  project: Projector;
+  dashOffset: number;
+  width: number;
+  /** Off when something else is drawn on top and adds the haze itself */
+  haze?: boolean;
+}) {
+  const band = (left: number, right: number, zFrom = ROAD_NEAR_Z, zTo = ROAD_FAR_Z) =>
     points(
-      project(x - halfWidth, 0, zFrom),
-      project(x + halfWidth, 0, zFrom),
-      project(x + halfWidth, 0, zTo),
-      project(x - halfWidth, 0, zTo),
+      project(left, 0, zFrom),
+      project(right, 0, zFrom),
+      project(right, 0, zTo),
+      project(left, 0, zTo),
     );
+  const line = (x: number) => band(x - 0.06, x + 0.06);
 
-  const marks: ReactNode[] = [];
-  // The bike lane
-  for (const x of [-1.1, 1.1]) {
-    LANE_SEGMENTS.forEach(([from, to, opacity], i) => {
-      marks.push(
-        <Polygon
-          key={`lane${x}-${i}`}
-          fill={LINE}
-          opacity={opacity}
-          points={strip(x, 0.05, from, to)}
-        />,
-      );
-    });
-  }
-  // Dashed centre line of the road, scrolling towards the viewer with the bike's speed
+  const dashes: ReactNode[] = [];
+  // Dashed line between the traffic lanes, scrolling towards the viewer with the bike's speed
   for (let i = 0; i < DASH_COUNT; i++) {
     const from = Math.min(24 - i * DASH_SPACING + dashOffset, ROAD_NEAR_Z);
     const to = from - DASH_LENGTH;
     if (to > ROAD_NEAR_Z - 0.5) continue;
-    const opacity = fog(project(-4.2, 0, to).depth);
-    if (opacity <= 0.02) continue;
-    marks.push(
+    dashes.push(
       <Polygon
-        key={`dash${i}`}
+        key={i}
         fill={LINE}
-        opacity={opacity}
-        points={strip(-4.2, 0.07, from, to)}
+        points={band(LANE_DIVIDER - 0.07, LANE_DIVIDER + 0.07, from, to)}
       />,
     );
   }
-  return <>{marks}</>;
+
+  return (
+    <>
+      <Polygon fill={STREET.major.color} points={band(KERB_LEFT, BIKE_LANE_LEFT)} />
+      <Polygon fill={STREET.cycle.color} points={band(BIKE_LANE_LEFT, BIKE_LANE_RIGHT)} />
+      <Polygon fill={STREET.foot.color} points={band(BIKE_LANE_RIGHT, PAVEMENT_RIGHT)} />
+      <Polygon fill={LINE} points={line(KERB_LEFT)} />
+      <Polygon fill="#FFFFFF" points={line(BIKE_LANE_LEFT)} />
+      <Polygon fill={LINE} points={line(BIKE_LANE_RIGHT)} />
+      {dashes}
+      {haze && <Haze project={project} width={width} />}
+    </>
+  );
 }
 
 // ---- The map on the ground --------------------------------------------------------
@@ -341,7 +355,9 @@ const STREET = {
   major: { half: 4.6, color: '#FFFFFF' },
   cycle: { half: 1.3, color: '#CDEBDC' },
 } as const;
-const ROUTE_HALF_M = 0.6;
+const ROUTE_HALF_M = 0.45;
+const ROUTE_LANE_HALF_M = 1.2;
+const ROUTE_BED_HALF_M = 3;
 
 /**
  * Builds one SVG path holding every visible stretch of the given lines, as
@@ -572,44 +588,13 @@ function Buildings({
   return <>{bands}</>;
 }
 
-function MapGround({
-  ground,
-  pose,
-  project,
-  width,
-}: {
-  ground: Ground;
-  pose: Pose;
-  project: Projector;
-  width: number;
-}) {
+/** Distance haze: the ground fades out towards the horizon. */
+function Haze({ project, width }: { project: Projector; width: number }) {
   // Fully hazed beyond about 80 m, clear from about 35 m in.
   const horizon = project(0, 0, -80).y;
   const clear = project(0, 0, -35).y;
   return (
     <>
-      <Path
-        d={ribbons(ground.roads.minor, pose, STREET.minor.half, project)}
-        fill={STREET.minor.color}
-      />
-      <Path
-        d={ribbons(ground.roads.foot, pose, STREET.foot.half, project)}
-        fill={STREET.foot.color}
-      />
-      <Path
-        d={ribbons(ground.roads.major, pose, STREET.major.half, project)}
-        fill={STREET.major.color}
-      />
-      <Path
-        d={ribbons(ground.roads.cycle, pose, STREET.cycle.half, project)}
-        fill={STREET.cycle.color}
-      />
-      <Path
-        d={ribbons([ground.route], pose, ROUTE_HALF_M, project)}
-        fill={Status.accent}
-        opacity={0.9}
-      />
-      {/* Distance haze: the ground fades out towards the horizon. */}
       <Defs>
         <LinearGradient
           id="haze"
@@ -625,6 +610,84 @@ function MapGround({
       </Defs>
       <Rect x={0} y={0} width={width} height={horizon + 1} fill={GROUND} />
       <Rect x={0} y={horizon} width={width} height={clear - horizon} fill="url(#haze)" />
+    </>
+  );
+}
+
+/** A road counts as under the rider if its centre line passes within this many metres. */
+const UNDER_RIDER_M = 9;
+
+/** Whether the route or any loaded street runs under the rider. */
+function hasRoadUnder(ground: Ground, pose: Pose) {
+  const near = (line: GroundLine) => {
+    if (
+      line.maxE < pose.east - UNDER_RIDER_M ||
+      line.minE > pose.east + UNDER_RIDER_M ||
+      line.maxN < pose.north - UNDER_RIDER_M ||
+      line.minN > pose.north + UNDER_RIDER_M
+    ) {
+      return false;
+    }
+    for (let i = 0; i < line.east.length - 1; i++) {
+      // Distance from the rider to this stretch of the line.
+      const ax = line.east[i] - pose.east;
+      const ay = line.north[i] - pose.north;
+      const dx = line.east[i + 1] - line.east[i];
+      const dy = line.north[i + 1] - line.north[i];
+      const lengthSq = dx * dx + dy * dy;
+      const t = lengthSq === 0 ? 0 : Math.min(Math.max(-(ax * dx + ay * dy) / lengthSq, 0), 1);
+      if (Math.hypot(ax + t * dx, ay + t * dy) < UNDER_RIDER_M) return true;
+    }
+    return false;
+  };
+  if (near(ground.routeBed)) return true;
+  const { minor, major, cycle, foot } = ground.roads;
+  return minor.some(near) || major.some(near) || cycle.some(near) || foot.some(near);
+}
+
+function MapGround({
+  ground,
+  pose,
+  project,
+  width,
+  dashOffset,
+}: {
+  ground: Ground;
+  pose: Pose;
+  project: Projector;
+  width: number;
+  dashOffset: number;
+}) {
+  const minor = ribbons(ground.roads.minor, pose, STREET.minor.half, project);
+  const foot = ribbons(ground.roads.foot, pose, STREET.foot.half, project);
+  const major = ribbons(ground.roads.major, pose, STREET.major.half, project);
+  const cycle = ribbons(ground.roads.cycle, pose, STREET.cycle.half, project);
+  const bed = ribbons([ground.routeBed], pose, ROUTE_BED_HALF_M, project);
+
+  // Off the route with no street under the rider: put the plain road beneath, so the rider is
+  // never floating on empty ground.
+  const stranded = !hasRoadUnder(ground, pose);
+
+  return (
+    <>
+      {stranded && <Road project={project} dashOffset={dashOffset} width={width} haze={false} />}
+      <Path d={minor} fill={STREET.minor.color} />
+      <Path d={foot} fill={STREET.foot.color} />
+      <Path d={major} fill={STREET.major.color} />
+      <Path d={cycle} fill={STREET.cycle.color} />
+      {/* A lane under the route itself, so there is always road beneath the rider: before the
+          streets have loaded, and on paths the map data has nothing for. */}
+      <Path d={bed} fill={STREET.major.color} />
+      <Path
+        d={ribbons([ground.routeBed], pose, ROUTE_LANE_HALF_M, project)}
+        fill={STREET.cycle.color}
+      />
+      <Path
+        d={ribbons([ground.route], pose, ROUTE_HALF_M, project)}
+        fill={Status.accent}
+        opacity={0.9}
+      />
+      <Haze project={project} width={width} />
     </>
   );
 }
@@ -769,9 +832,10 @@ export function ProximityScene(props: Props) {
               pose={frame.pose}
               project={project}
               width={size.width}
+              dashOffset={frame.dashOffset}
             />
           ) : (
-            <Road project={project} dashOffset={frame.dashOffset} />
+            <Road project={project} dashOffset={frame.dashOffset} width={size.width} />
           )}
           {props.ground && frame.pose && (
             <Buildings buildings={props.ground.buildings} pose={frame.pose} project={project} />
