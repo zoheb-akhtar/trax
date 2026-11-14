@@ -65,7 +65,7 @@ It assumes the Raspberry Pi Camera Module 2 field of view (62.2° × 48.8°). If
 cropped or a different lens is used, the constants at the top of that file need changing.
 
 A vehicle estimated to be within 7 m, and within 3.2 m to either side, shows "Vehicle close".
-- `events`: newest first. `kind` is `"tamper"` or `"motion"`. `ts` is Unix milliseconds.
+- `events`: newest first. `kind` is `"tamper"`, `"motion"` or `"crash"`. `ts` is Unix milliseconds.
 
 ## `POST /mode`
 
@@ -75,6 +75,16 @@ Body: `{ "mode": "ride" }` or `{ "mode": "security" }`. Security mode arms the I
 
 Body: `{ "active": false }` silences the alarm. `{ "active": true }` sounds it on purpose (the
 app's "Sound alarm" button), without adding an event.
+
+## `POST /chirp`
+
+No body. A short beep and LED flash so the owner can find the bike. Does not add an event.
+
+## Crash detection
+
+When the IMU sees a fall while in ride mode (a hard jolt followed by the bike lying on its
+side), add an event with `"kind": "crash"`. Do not sound the alarm. The app starts a
+countdown and then prepares a message to the rider's emergency contact.
 
 ## Pictures of security events
 

@@ -136,6 +136,14 @@ class Device:
             del self.events[20:]
         print("[event] bike moved -> alarm on")
 
+    def crash(self) -> None:
+        """Call this when the IMU sees a fall while riding (a hard jolt, then the bike on its side)."""
+        with self.lock:
+            now = int(time.time() * 1000)
+            self.events.insert(0, {"id": f"evt-{now}", "kind": "crash", "ts": now})
+            del self.events[20:]
+        print("[event] crash detected")
+
     # ---- Called by the HTTP handlers -------------------------------------------------
     def set_mode(self, mode: str) -> None:
         with self.lock:
@@ -270,6 +278,12 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True})
         elif url.path == "/alarm":
             DEVICE.set_alarm(bool(body.get("active")))
+            self._json(200, {"ok": True})
+        elif url.path == "/chirp":
+            print("[mcu] CHIRP")  # REPLACE: a short beep and LED flash, to find the bike
+            self._json(200, {"ok": True})
+        elif url.path == "/debug/crash":  # testing only: remove on the real device
+            DEVICE.crash()
             self._json(200, {"ok": True})
         elif url.path == "/debug/tamper":  # testing only: remove on the real device
             DEVICE.tamper()
