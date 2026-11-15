@@ -1,0 +1,8 @@
+# Mac side (velo_brain.py, mac_preview.py, hw_diag.py). Python 3.11+.
+ultralytics>=8.3        # YOLO11 + YOLO-World + ByteTrack (pulls in torch, torchvision)
+opencv-python>=4.10     # also runs YOLOP (cv2.dnn); onnxruntime is used instead if installed (faster)
+numpy
+psutil
+# only for re-baking the YOLO-World vocabulary (tools/bake_world.py):
+# git+https://github.com/ultralytics/CLIP.git
+# Board side (uno_q_camera.py) runs on the UNO Q's own Python: flask, opencv (apt), simplejpeg (see README).
