@@ -36,6 +36,10 @@ For the app team. The device (today: `velo_brain.py` on a Mac standing in for th
       "cpa": {"tS": 1.5, "missM": 1.2},// closest approach: when, and how close
       "stationary": true,              // e.g. a parked car (needs GPS speed)
       "inPath": true,                  // inside the bike's predicted path corridor
+      "lead": true,                    // the nearest vehicle / cyclist in your path
+      "headwayS": 2.1,                 // seconds to reach the lead vehicle at your speed
+      "braking": true,                 // its brake lights just came on
+      "relevant": true,                // traffic lights: the one that applies to you
       "light": "red",                  // traffic lights only
       "threat": 3                      // 0 none, 1 info, 2 caution, 3 danger
   } ],
@@ -89,7 +93,9 @@ Distances and positions come from each camera's mount geometry (`velo_config.jso
 | `emergency` | caution / danger | ambulance, fire truck, police car | "pull right" |
 | `in_traffic_lane` | caution | you're in a car lane with a car coming up behind | |
 | `leaving_bike_lane` | info | drifting out of the bike lane | |
-| `red_light` / `yellow_light` | info | | traffic-light icon |
+| `lead_braking` | caution | the car ahead in your path just hit its brakes (brake lights) | red glow on the lead car |
+| `green_light` | info | you're stopped and the light that applies to you turned green | chime (Tesla's green-light chime) |
+| `red_light` / `yellow_light` | info | only for the light that applies to you (`relevant`) | traffic-light icon |
 | `stop_sign` / `yield_sign` / `no_entry` / `crosswalk` | info / caution | | sign icon |
 
 Alerts have hysteresis: each is held for about 1 s after the condition clears, so they don't flicker. There is one alert per tracked object, its most severe. Sort order is most severe first.
@@ -101,6 +107,31 @@ Alerts have hysteresis: each is held for about 1 s after the condition clears, s
 - Draw `road.egoPath` as the ribbon: green in a bike lane, blue otherwise.
 - Light the left or right zone when `surroundings.zones.left/right` has something with `threat >= 2`.
 
+## Ride log and dashcam incidents
+
+Every **danger** situation while riding (`close_pass`, `collision`, `rear_collision`, `right_hook`, `oncoming`) becomes an **incident**, like Tesla's dashcam:
+- every camera is saved from 6 s before to 6 s after
+- an `incident` event is sent with the GPS position, the car's speed and, for close passes, the measured **clearance** (side of the car to the bike)
+
+```
+GET /ride    -> {"ride": {id, started, durationS, distanceM, maxSpeedKmh, incidents: [...],
+                          alertCounts: {kind: n}, closestPassM, track: [[lat, lon], ...]}}
+GET /rides   -> {"rides": [...]}  past rides (a ride ends when the bike is locked)
+```
+
+Each incident has these fields: `{id, ts, situation, text, side, position, label, distanceM, objectSpeedKmh, closingMps, clearanceM, recording}`. Its video is at `/recordings/<recording>/front.mp4` (and `seat.mp4` / `rear.mp4`).
+
+**Ride history idea:** a map of the `track` with incident pins. Tapping a pin plays the clip and shows "Car passed 0.5 m from you at 48 km/h". That's evidence of close passes for the rider.
+
+## Camera status
+
+`cameraStatus` in `/state`: `{front: {live, fps, status, role}, seat: {...}, rear: {...}}`. Only open `/stream` for cameras with `live: true`. Browsers allow about 6 connections per host, and a dead stream holds one.
+
+## Reference UI and types
+
+- **`GET /hud`:** a live web HUD served by the device, using only this API. Ride view: Tesla-style 3D scene, cameras with boxes, alerts, ride stats. Park view: Ring-style status ring, alarm / chirp / unlock buttons, live cameras, event timeline with trigger frames, faces and video. Open `http://<device>:8000/hud` and read `firmware/web/hud.html`, which has the projection math, box drawing and SSE handling.
+- **`firmware/api/velo-api.ts`:** TypeScript types for every response, plus a small typed `VeloClient` (`state()`, `lock()`, `recordings()`, `fileUrl()`, `onEvent()`...) and helpers (`topAlert`, `litSides`, `project`). It passes `tsc --strict`. Copy it into `src/device/`.
+
 ## Park mode (security)
 
 **States** (`security.state`), with the ring colour on the bike:
@@ -109,7 +140,7 @@ Alerts have hysteresis: each is held for about 1 s after the condition clears, s
 |---|---|---|
 | `armed` | orange, breathing | locked and watching |
 | `motion` | amber spinner | someone near, or the bike was touched. Recording. Event `motion`. |
-| `intruder` | red flashing | someone at the bike for > 4 s, or the bike was moved, lifted or tipped (IMU). Recording, faces saved. Event `tamper`. |
+| `intruder` | red flashing | someone at the bike for > 4 s; someone at the bike **while** it is touched (immediately); or the bike was moved, lifted or tipped (IMU). Recording, faces saved. Event `tamper`. |
 | `alarm` | red + white strobe | owner pressed "sound alarm" |
 
 The STM32 turns the ring red **by itself** on tamper, even with no phone or brain connected.

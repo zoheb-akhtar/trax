@@ -111,7 +111,8 @@ The hub's USB-C port only charges: a board plugged in there gets power but no da
 
 ```
 .venv/bin/python velo_brain.py --show --voice     # everything, with the Tesla-style window (P park, R ride)
-.venv/bin/python tests/test_perception_sim.py     # 8 traffic scenarios through the real geometry
+.venv/bin/python tests/test_perception_sim.py     # 12 traffic scenarios (clean + noisy) through the real geometry
+.venv/bin/python tests/test_security_rides.py     # park-mode state machine, recordings, ride incidents
 ./flash_mcu.sh velo_mcu                           # STM32 firmware the brain talks to (ring, IMU, GPS)
 ```
 
@@ -123,6 +124,9 @@ The hub's USB-C port only charges: a board plugged in there gets power but no da
 | `perception.py` | tracking across cameras, metric 3D positions, velocities, collision prediction (CPA), rider situations |
 | `security.py` | park mode: motion detection, pre-trigger recording (H.264), faces, events, state machine |
 | `mcu.py` + `velo_mcu/` | STM32 link + firmware: ring patterns, hazard direction, IMU tamper / crash / pothole, GPS |
+| `rides.py` | ride log + dashcam: danger situations become incidents with clips, GPS and close-pass clearance |
+| `web/hud.html` | live web HUD at `http://localhost:8000/hud` (Tesla ride view, Ring park view) |
+| `api/velo-api.ts` | TypeScript types + client for the app |
 | `APP_INTEGRATION.md` | for the app team: every field, alert kind, event, endpoint, and UI suggestions |
 
 Camera roles: front = road ahead, seat webcam = road behind, Pi camera 2 (`rear`) = security (people, faces).

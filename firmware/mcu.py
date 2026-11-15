@@ -71,8 +71,9 @@ class Mcu:
 
     def speed_mps(self):
         g = self.gps
-        if g and g.get("fix") and time.time() - g["t"] < 3:
-            return g["kmh"] / 3.6
+        if g and g.get("fix") and time.time() - g["t"] < 3 and g["kmh"] is not None:
+            # a parked GPS wanders at 0.5-2 km/h: call that stopped (no phantom distance or motion)
+            return g["kmh"] / 3.6 if g["kmh"] >= 2.0 else 0.0
         return None
 
     def yaw_rate(self, axis="gz", sign=1.0):

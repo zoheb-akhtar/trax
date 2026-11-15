@@ -346,6 +346,10 @@ class SecurityMonitor:
                 if self.state != "alarm":
                     self._set("intruder")
                 self._start("bike moved", "tamper", severity=round(value, 2))
+            elif kind == "nudge" and self.near_since is not None and self.state in ("armed", "motion"):
+                # a person right at the bike AND the bike being touched: that's someone handling it
+                self._set("intruder")
+                self._start("person touching the bike", "tamper", severity=round(value, 2))
             elif kind == "nudge" and self.state == "armed":
                 self._set("motion")
                 self._start("bike touched", "motion", severity=round(value, 2))

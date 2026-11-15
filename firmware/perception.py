@@ -177,6 +177,68 @@ def locate(camera, label, box):
     return (x, z), d, sigma
 
 
+ACCEL_NOISE = {"vehicle": 3.0, "person": 1.5, "bicycle": 2.0, "micromobility": 2.0, "animal": 3.0}
+
+
+class Kalman:
+    """Constant-velocity Kalman filter on the road plane: state (x, z, vx, vz) in the bike frame.
+    Smooth positions and velocities for the 3D view, and a principled blend of noisy per-frame
+    distances (far objects are noisier; locate() supplies each measurement's uncertainty)."""
+
+    def __init__(self, x, z, sx, sz, t, accel):
+        self.s = np.array([x, z, 0.0, 0.0])
+        self.P = np.diag([sx * sx, sz * sz, 225.0, 225.0])  # velocity unknown at first: +-15 m/s
+        self.t = self.t0 = t
+        self.n = 1
+        self.accel = accel
+
+    def predict(self, t):
+        dt = max(0.0, t - self.t)
+        if dt == 0:
+            return
+        F = np.eye(4)
+        F[0, 2] = F[1, 3] = dt
+        q = self.accel ** 2
+        G = np.array([[dt * dt / 2, 0], [0, dt * dt / 2], [dt, 0], [0, dt]])
+        self.s = F @ self.s
+        self.P = F @ self.P @ F.T + G @ G.T * q
+        self.t = t
+
+    def update(self, x, z, sx, sz, t):
+        self.predict(t)
+        H = np.zeros((2, 4))
+        H[0, 0] = H[1, 1] = 1
+        R = np.diag([sx * sx, sz * sz])
+        y = np.array([x, z]) - H @ self.s
+        S_ = H @ self.P @ H.T + R
+        # gate wild measurements (a box jumping to another object): soften instead of following
+        if float(y @ np.linalg.solve(S_, y)) > 25:
+            R = R * 6
+            S_ = H @ self.P @ H.T + R
+        K = self.P @ H.T @ np.linalg.inv(S_)
+        self.s = self.s + K @ y
+        self.P = (np.eye(4) - K @ H) @ self.P
+        self.n += 1
+
+    def copy(self):
+        k = Kalman(0, 0, 1, 1, self.t, self.accel)
+        k.s, k.P, k.t0, k.n = self.s.copy(), self.P.copy(), self.t0, self.n
+        return k
+
+
+def brake_light_score(crop):
+    """Fraction of bright, saturated red pixels in the lamp band of a vehicle seen from behind.
+    Brake lights switching on make this jump; the brain compares it with the car's own recent
+    baseline, so a red car doesn't look like it is braking."""
+    if crop is None or crop.size == 0 or min(crop.shape[:2]) < 8:
+        return None
+    h = crop.shape[0]
+    band = crop[int(0.25 * h):int(0.8 * h)]
+    hsv = cv2.cvtColor(band, cv2.COLOR_BGR2HSV)
+    red = ((hsv[..., 0] <= 8) | (hsv[..., 0] >= 170)) & (hsv[..., 1] >= 90) & (hsv[..., 2] >= 170)
+    return float(red.mean())
+
+
 class Track:
     def __init__(self, gid, camera, t):
         self.gid, self.camera = gid, camera
@@ -188,6 +250,8 @@ class Track:
         self.hist = deque(maxlen=40)  # (t, box height, x, z) ; x/z None if unknown
         self.lights = deque(maxlen=7)
         self.handed_off = False
+        self.kf = None  # Kalman filter on the road plane
+        self.brake = deque(maxlen=30)  # (t, brake-light score)
 
     @property
     def label(self):
@@ -224,6 +288,8 @@ class Perception:
         self._alerts: dict[str, dict] = {}
         self._also = {}
         self.cam_t = {c: 0.0 for c in cameras}
+        self._light_prev = {}
+        self._green_until = 0.0
 
     # ---- tracking ----------------------------------------------------------------------
     def update(self, camera, t, xyxy_norm, conf, cls_names, frame=None):
@@ -246,13 +312,32 @@ class Perception:
             box = np.clip(np.array([x1, y1, x2, y2]) / scale, 0, 1)
             label = uniq[int(c)]
             if trk is None:
-                trk = Track(self._take_gid(camera, box, label, t), camera, t)
+                gid, prev = self._take_gid(camera, box, label, t)
+                trk = Track(gid, camera, t)
+                if prev is not None and prev.kf is not None:
+                    trk.kf = prev.kf.copy()  # same object, other camera: keep its motion state
                 self.tracks[key] = trk
             trk.last_seen, trk.box, trk.conf = t, box, float(score)
             trk.labels[label] += 1
             trk.max_conf = max(trk.max_conf, float(score))
-            pos, _, _ = locate(camera, trk.label, box)
+            pos, dist, sigma = locate(camera, trk.label, box)
             trk.hist.append((t, float(box[3] - box[1]), *(pos if pos else (None, None))))
+            if pos is not None and trk.label not in ELEVATED:
+                # frame-to-frame jitter, not the absolute error: most distance error is a steady
+                # bias (this car is taller than average), which doesn't disturb velocities
+                sz = 0.05 + 0.04 * dist
+                sx = 0.05 + 0.012 * dist
+                if trk.kf is None:
+                    trk.kf = Kalman(pos[0], pos[1], sx, sz, t, ACCEL_NOISE.get(group(trk.label), 2.0))
+                else:
+                    trk.kf.update(pos[0], pos[1], sx, sz, t)
+            if frame is not None and group(trk.label) == "vehicle" and facing(camera) == "front" \
+                    and float(box[3] - box[1]) > 0.05:
+                H, W = frame.shape[:2]
+                bx1, by1, bx2, by2 = (box * [W, H, W, H]).astype(int)
+                sc = brake_light_score(frame[max(0, by1):by2, max(0, bx1):bx2])
+                if sc is not None:
+                    trk.brake.append((t, sc))
             if trk.label == "traffic light" and frame is not None:
                 H, W = frame.shape[:2]
                 bx1, by1, bx2, by2 = (box * [W, H, W, H]).astype(int)
@@ -278,14 +363,15 @@ class Perception:
                     best = old
             if best:
                 best.handed_off = True
-                return best.gid
+                return best.gid, best
         self._next_gid += 1
-        return self._next_gid - 1
+        return self._next_gid - 1, None
 
     # ---- motion -------------------------------------------------------------------------
     @staticmethod
     def _motion(trk, now):
-        """(x, z, vx, vz relative m/s, ttc s from box growth) from the recent track history."""
+        """(x, z, vx, vz relative m/s, ttc s from box growth): from the Kalman filter when it has
+        settled, else from the recent track history."""
         hist = [p for p in trk.hist if now - p[0] <= 1.0]
         pos = [p for p in list(trk.hist)[-3:] if p[2] is not None]
         x = z = vx = vz = ttc = None
@@ -304,7 +390,25 @@ class Perception:
             if len(mp) >= 4 and mp[-1][0] - mp[0][0] >= 0.35:
                 mts = [p[0] for p in mp]
                 vx, vz = _slope(mts, [p[2] for p in mp]), _slope(mts, [p[3] for p in mp])
+        kf = trk.kf
+        if kf is not None and kf.n >= 3:
+            k = kf.copy()
+            k.predict(max(now, k.t))  # where it is now (it may have been seen a moment ago)
+            x, z = float(k.s[0]), float(k.s[1])
+            if kf.n >= 5 and kf.t - kf.t0 >= 0.4:
+                vx, vz = float(k.s[2]), float(k.s[3])
+        trk.vel_std = float(math.sqrt(max(kf.P[3, 3], 0))) if kf is not None else 99.0
         return x, z, vx, vz, ttc
+
+    @staticmethod
+    def _braking(trk, now):
+        """True when the car's brake lights just came on (score jumps above its own baseline)."""
+        pts = [(t, s) for t, s in trk.brake if now - t <= 3.0]
+        if len(pts) < 6:
+            return False
+        recent = float(np.median([s for t, s in pts[-3:]]))
+        base = float(np.percentile([s for t, s in pts[:-3]], 25))
+        return recent > 0.004 and recent > 2.5 * base + 0.002
 
     # ---- output -------------------------------------------------------------------------
     def snapshot(self, now, ego=None, road=None):
@@ -318,6 +422,10 @@ class Perception:
                 and now - t.last_seen <= self.lost_grace_s]
         live = self._merge_same_direction(live)
         bikes = [t.box for t in live if t.label == "bicycle"]
+        # the traffic light that applies to us: ahead, central, big (nearest)
+        lights = [t for t in live if t.label == "traffic light" and facing(t.camera) == "front"]
+        relevant = min(lights, key=lambda t: abs((t.box[0] + t.box[2]) / 2 - 0.5) - 2 * (t.box[3] - t.box[1]),
+                       default=None)
         dets, wanted = [], {}
         for trk in sorted(live, key=lambda t: t.gid):
             x1, y1, x2, y2 = (float(v) for v in trk.box)
@@ -344,7 +452,7 @@ class Perception:
                 if v_ego is not None:
                     ax, az = vx, vz + v_ego  # absolute (ground) velocity
                     d["speedKmh"] = round(math.hypot(ax, az) * 3.6, 1)
-                    if v_ego > 1.5 and math.hypot(ax, az) < 1.0:
+                    if v_ego > 1.5 and math.hypot(ax, az) < 1.0 and getattr(trk, "vel_std", 99) < 1.0:
                         d["stationary"] = True
             if ttc is not None:
                 d["ttcS"] = round(ttc, 1)
@@ -363,6 +471,11 @@ class Perception:
                     colour, n = votes.most_common(1)[0]
                     if n >= min(3, len(trk.lights)):
                         d["light"] = colour
+                if trk is relevant:
+                    d["relevant"] = True
+                    self._light_change(trk.gid, d.get("light"), now, v_ego)
+            if d["group"] == "vehicle" and facing(trk.camera) == "front" and self._braking(trk, now):
+                d["braking"] = True
             if road and x is not None and road.get("ok"):
                 d["inPath"] = _in_corridor(road, x, z, 0.9)
             threats = _threats(trk, d, ttc, riding, road, v_ego) if role(trk.camera) != "security" else []
@@ -373,10 +486,37 @@ class Perception:
                                                "side": _side(d)}
             d["threat"] = max((LEVELS[lv] for _, lv, _ in threats), default=0)
             dets.append(d)
+        # lead vehicle: the nearest thing ahead in the bike's path
+        ahead = [d for d in dets if d["camera"] == "front" and d["group"] in ("vehicle", "bicycle", "micromobility")
+                 and "position" in d and d["position"][1] > 0
+                 and abs(d["position"][0] - (_path_x(road, d["position"][1]) if road and road.get("ok") else 0)) < 1.3]
+        if ahead:
+            lead = min(ahead, key=lambda d: d["position"][1])
+            lead["lead"] = True
+            if v_ego and v_ego > 1:
+                lead["headwayS"] = round(lead["position"][1] / v_ego, 1)
+            if lead.get("braking") and lead["position"][1] < 30:
+                wanted[f"lead_braking-{lead['id']}"] = {
+                    "id": f"lead_braking-{lead['id']}", "kind": "lead_braking", "level": "caution",
+                    "text": f"{lead['label'].capitalize()} ahead braking", "camera": "front", "source": lead["source"],
+                    "trackId": lead["id"], "bearingDeg": lead.get("bearingDeg"), "side": "ahead"}
+        if now < self._green_until:
+            wanted["green_light"] = {"id": "green_light", "kind": "green_light", "level": "info",
+                                     "text": "Light is green", "camera": "front", "source": "front",
+                                     "trackId": -1, "bearingDeg": 0, "side": "ahead"}
         for kind, level, text in _road_situations(road, dets):
             wanted[kind] = {"id": kind, "kind": kind, "level": level, "text": text, "camera": "front",
                             "source": "front", "trackId": -1, "bearingDeg": 0, "side": "ahead"}
         return dets, self._update_alerts(wanted, now), surroundings(dets, road)
+
+    def _light_change(self, gid, colour, now, v_ego):
+        """Tesla's green-light chime: the light we are waiting at turned green."""
+        prev = self._light_prev.get(gid)
+        if colour:
+            self._light_prev = {gid: colour}
+        stopped = v_ego is None or v_ego < 1.0
+        if prev in ("red", "yellow") and colour == "green" and stopped:
+            self._green_until = now + 3.0
 
     def _merge_same_direction(self, live):
         """Two cameras facing the same way can see the same car. Pair tracks of the same kind at
@@ -412,7 +552,10 @@ class Perception:
                 self._alerts[aid] = {**a, "since": now, "lastTrue": now}
         for aid in [k for k, a in self._alerts.items() if now - a["lastTrue"] > hold_s]:
             del self._alerts[aid]
-        out = sorted(self._alerts.values(), key=lambda a: (-LEVELS[a["level"]], a["since"]))
+        # most severe first; at equal severity the more specific situation wins ("oncoming car in
+        # your lane" says more than "vehicle ahead: brake")
+        out = sorted(self._alerts.values(),
+                     key=lambda a: (-LEVELS[a["level"]], KIND_RANK.get(a["kind"], 5), a["since"]))
         top = {}
         for a in out:  # one alert per tracked object: its most severe one
             top.setdefault(a["trackId"] if a["trackId"] >= 0 else a["id"], a)
@@ -426,6 +569,9 @@ def _rank(t):
 
 
 LEVELS = {"info": 1, "caution": 2, "danger": 3}
+KIND_RANK = {"oncoming": 0, "right_hook": 0, "close_pass": 0, "rear_collision": 1, "crossing": 1, "door_zone": 1,
+             "lead_braking": 2, "blind_spot": 2, "vehicle_in_bike_lane": 2, "emergency": 2,
+             "collision": 4, "closing_ahead": 6, "in_path": 6, "beside": 7, "vehicle_behind": 7}
 
 
 def _overlap(a, b):
@@ -507,14 +653,21 @@ def _threats(trk, d, ttc, riding, road, v_ego):
         road_ok = bool(road and road.get("ok"))
         in_path = d.get("inPath") if road_ok and pos else abs(x) < 1.5
         if what and not (label == "person" and riding):
-            hit_soon = (cpa and cpa["tS"] < 2.5 and cpa["missM"] < half + 0.3) or \
-                       (in_path and ttc is not None and ttc < 2.5)
-            near_soon = (cpa and cpa["tS"] < 4 and cpa["missM"] < half + 1.0) or \
-                        (in_path and ttc is not None and ttc < 5)
-            if g == "vehicle" and pos and vz < -((v_ego or 0) + 3) and abs(x) < 4 and z < 40:
-                lvl = "danger" if abs(x) < 1.5 and z < 25 else "info"
-                out.append(("oncoming", lvl, f"Oncoming {label} {side}".strip()))
-            if hit_soon:
+            # collision-type warnings only for things in the path or really moving into it, and only
+            # once the velocity estimate has settled (no false alarms from the first noisy frames)
+            settled = getattr(trk, "vel_std", 99) < 1.2
+            entering = pos and abs(x) >= half + 0.3 and abs(vx) > 0.5 and np.sign(vx) == -np.sign(x)
+            in_lane = pos and abs(x) < half + 0.3
+            hit_soon = (settled and (in_lane or entering) and cpa and cpa["tS"] < 2.5 and cpa["missM"] < half + 0.2) \
+                or (in_path and ttc is not None and ttc < 2.5)
+            near_soon = (settled and (in_lane or entering) and cpa and cpa["tS"] < 4 and cpa["missM"] < half + 0.5) \
+                or (in_path and ttc is not None and ttc < 5)
+            oncoming = g == "vehicle" and pos and settled and vz < -((v_ego or 0) + 3) and abs(x) < 4 and z < 40
+            if oncoming:
+                head_on = abs(x) < half + 0.3 and z < 25
+                out.append(("oncoming", "danger" if head_on else "info",
+                            f"Oncoming {label} in your lane" if head_on else f"Oncoming {label} {side}".strip()))
+            elif hit_soon:
                 out.append(("collision", "danger", f"{what} ahead: brake"))
             elif g == "vehicle" and pos and x < -0.5 and vx > 0.7 and 0 < z < 15:
                 out.append(("right_hook", "danger", f"{what} turning across you"))
@@ -522,7 +675,7 @@ def _threats(trk, d, ttc, riding, road, v_ego):
                     and abs(x - (_path_x(road, z) if road_ok else 0)) < 4 \
                     and np.sign(-(x - (_path_x(road, z) if road_ok else 0))) == np.sign(vx):
                 out.append(("crossing", "caution", f"{what} crossing ahead"))
-            elif near_soon and not (d.get("stationary") and pos and abs(x) > half):
+            elif near_soon:
                 out.append(("closing_ahead", "caution", f"Closing on {what.lower()} ahead"))
             elif g in ("person", "animal", "obstacle") and in_path and pos and z < 12:
                 out.append(("in_path", "caution", f"{what} in your path"))
@@ -538,7 +691,8 @@ def _threats(trk, d, ttc, riding, road, v_ego):
             if label in EMERGENCY and pos and z < 60:
                 out.append(("emergency", "caution", f"{label.capitalize()} ahead"))
         dist = d.get("distanceM")
-        if label == "traffic light" and d.get("light") in ("red", "yellow") and (dist is None or dist < 60):
+        if label == "traffic light" and d.get("relevant") and d.get("light") in ("red", "yellow") \
+                and (dist is None or dist < 60):
             out.append((f"{d['light']}_light", "info", f"{d['light'].capitalize()} light ahead"))
         if label == "stop sign" and (dist is None or dist < 30):
             out.append(("stop_sign", "info", "Stop sign ahead"))

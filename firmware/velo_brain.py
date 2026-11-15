@@ -29,7 +29,9 @@ API (port 8000, CORS *), the app's contract (docs/device-api.md in the app repo)
                                 + alerts, surroundings, road, security, mcu, perf
     GET  /stream?camera=front|rear|seat     GET /snapshot?camera=...
     GET  /events                newest first;  GET /events/stream  server-sent events
-    GET  /recordings            recordings (park mode);  GET /recordings/<id>/<file>
+    GET  /recordings            recordings (park mode + ride incidents);  GET /recordings/<id>/<file>
+    GET  /ride  /rides          this ride (distance, incidents, closest pass) / past rides
+    GET  /hud                   live web HUD (Tesla-style ride view, Ring-style park view)
     POST /mode {"mode": "ride"|"security"}  (also "drive"/"park");  POST /lock  POST /unlock
     POST /alarm {"active": bool}   POST /chirp   POST /ring {"state": "armed"|...}
 See APP_INTEGRATION.md for what each field means and how the app should show it.
@@ -56,6 +58,7 @@ import board as B
 import detectors as D
 import geometry as G
 import perception as P
+import rides as RL
 import security as S
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -233,6 +236,8 @@ class Brain:
         self.notifier = S.Notifier()
         self.recorder = S.Recorder()
         self.security = S.SecurityMonitor(self.recorder, self.notifier, on_state=self._ring_for_security)
+        self.rides = RL.RideLog(self.recorder, self.notifier)
+        self.rides.start()
         self.motion = {c: S.MotionDetector() for c in sources}
         for src in sources.values():
             src.listeners.append(self.recorder.feed)
@@ -345,6 +350,7 @@ class Brain:
             dets, alerts, sur = self.engine.snapshot(time.time(), ego=ego, road=road)
             with self.lock:
                 self.detections, self.alerts, self.surroundings = dets, alerts, sur
+            self.rides.observe(alerts, dets, self.position(), ego["speed"])
             if self.voice:
                 self.voice.say(alerts)
             if self.mcu:
@@ -420,7 +426,9 @@ class Brain:
                    "roles": {c: P.role(c) for c in self.sources},
                    "detections": list(self.detections), "events": self.notifier.recent(),
                    "alerts": list(self.alerts), "surroundings": self.surroundings, "perf": dict(self.perf),
-                   "security": self.security.status(), "ts": int(time.time() * 1000)}
+                   "security": self.security.status(), "ts": int(time.time() * 1000),
+                   "cameraStatus": {c: {"live": s.live(), "fps": round(s.fps, 1), "status": s.status,
+                                        "role": P.role(c)} for c, s in self.sources.items()}}
         pos = self.position()
         out["position"] = pos
         if gps and gps.get("fix") and gps.get("kmh") is not None:
@@ -440,10 +448,12 @@ class Brain:
             if mode == "ride":
                 self.alarm = False
         if mode == "security":
+            self.rides.end()
             self.security.arm()
             if self.mcu:
                 self.mcu.mode("park")
         else:
+            self.rides.start()
             self.security.disarm()
             if self.mcu:
                 self.mcu.mode("drive")
@@ -547,6 +557,8 @@ def make_handler(brain: Brain):
             parts = [p for p in url.path.split("/") if p]
             if url.path == "/state":
                 self._json(200, brain.state())
+            elif url.path in ("/", "/hud"):
+                self._file(os.path.join(HERE, "web", "hud.html"), "text/html; charset=utf-8")
             elif url.path in ("/snapshot", "/snapshot.jpg"):
                 src = self._camera(url)
                 jpeg, _, _ = src.latest()
@@ -565,6 +577,10 @@ def make_handler(brain: Brain):
                 self._json(200, {"events": brain.notifier.recent(50)})
             elif url.path == "/events/stream":
                 self._sse()
+            elif url.path == "/ride":
+                self._json(200, {"ride": brain.rides.current()})
+            elif url.path == "/rides":
+                self._json(200, {"rides": brain.rides.history()})
             elif url.path == "/recordings":
                 self._json(200, {"recordings": brain.recorder.list()})
             elif len(parts) >= 3 and parts[0] == "recordings":
@@ -607,12 +623,15 @@ def make_handler(brain: Brain):
             self.send_header("Connection", "close")
             self._cors()
             self.end_headers()
-            seq = -1
+            seq, last = -1, time.time()
             try:
                 while True:
-                    jpeg, seq = src.wait_next(seq)
-                    if jpeg is None:
+                    jpeg, new = src.wait_next(seq)
+                    if new == seq or jpeg is None:
+                        if time.time() - last > 5:  # camera gone: free the connection (browsers allow ~6)
+                            break
                         continue
+                    seq, last = new, time.time()
                     self.wfile.write(b"--frame\r\nContent-Type: image/jpeg\r\nContent-Length: "
                                      + str(len(jpeg)).encode() + b"\r\n\r\n" + jpeg + b"\r\n")
             except (BrokenPipeError, ConnectionResetError, TimeoutError):
@@ -692,6 +711,10 @@ def draw_tile(img, dets, cam, th, show_boxes, road=None, road_state=None):
             text += f" {d['distanceM']:.0f}m"
         if d.get("speedKmh") is not None and d["group"] == "vehicle":
             text += f" {d['speedKmh']:.0f}km/h"
+        if d.get("lead"):
+            text = "LEAD " + text
+        if d.get("braking"):
+            text += " BRAKING"
         (tw_, th_), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
         ty = max(p1[1], th_ + 6)
         lx = min(p1[0], tw - tw_ - 6)
@@ -897,6 +920,9 @@ def main():
     threading.Thread(target=server.serve_forever, daemon=True).start()
     print(f"[brain] app API on http://{lan_ip()}:{a.port}  (simulator: localhost:{a.port})", flush=True)
 
+    import atexit
+
+    atexit.register(brain.rides.end)
     if a.show:
         show_loop(brain, a.height or 420)
     else:

@@ -211,12 +211,18 @@ MCU -> brain:  I ax ay az gx gy gz (20 Hz) | G fix sats lat lon kmh course hdop 
 | `detectors.py` | **YOLO11s** (COCO: vehicles, bikes, people, lights, stop signs) on every frame. **YOLO-World v2**, baked with Velo's vocabulary, at about 3 Hz: cones, barriers, speed limit / yield / crosswalk / one-way / no-entry signs, scooters, wheelchairs, strollers, ambulance / fire truck / police car (only relabels a COCO vehicle), faces. Plus OpenCV face cascades. |
 | `road.py` | **YOLOP** (BDD100K) drivable area + lane lines on the front camera, in its **own process** (2 threads). It works out: lane boundaries (line or curb), lane width, **bike lane** (narrow lane between a line and the curb, or green paint), offset from the lane centre, and the **ego path** (from IMU yaw rate + GPS speed when moving, otherwise following the lane shape). |
 | `geometry.py` + `velo_config.json` | Each camera's lens FOV, mount height, tilt and heading. Converts pixels to metres on the road. **Calibrate after mounting:** set `height_m` / `pitch_deg` so the drawn path sits on the road and a car known to be 10 m away reads 10 m. Also holds camera roles and ring orientation. |
-| `perception.py` | ByteTrack per camera, with **global ids across cameras** (a car passing from the seat view to the front view keeps its id). Distance is the ground-contact point fused with the typical object size; velocities, closest-point-of-approach collision prediction, about 20 situation types, surroundings. |
+| `perception.py` | ByteTrack per camera, with **global ids across cameras** (a car passing from the seat view to the front view keeps its id, and its motion state). Distance is the ground-contact point fused with the typical object size. A **Kalman filter** per track (constant velocity on the road plane) gives smooth positions and velocities. On top of that: closest-point-of-approach collision prediction (collision warnings only once the velocity has settled, and only for things in or entering the path), the **lead vehicle** and its **brake lights**, the **traffic light that applies to you**, and a **green-light alert**. About 25 situation types; the more specific alert wins at equal severity. |
+| `rides.py` | Ride log + dashcam: each danger situation becomes an **incident** with clips from 6 s before, GPS, the car's speed and the close-pass **clearance**. Ride summary at `/ride`; history at `/rides`. |
+| `web/hud.html` | Live web HUD at `/hud`. Ride view: Tesla-style 3D chase view. Park view: Ring-style. Uses only the public API, as a reference for the app. |
+| `api/velo-api.ts` | TypeScript types for every response, plus a typed client. Passes `tsc --strict`. Copy it into the app. |
 | `security.py` | Park mode: MOG2 motion detection, a recorder that keeps 6 s of pre-roll and writes H.264 MP4s plus trigger JPEGs, face crops, a Notifier (events, SSE, optional `VELO_WEBHOOK` POST), and the state machine. |
 | `mcu.py` | Serial link to `velo_mcu`. |
 | `board.py` | Finds the board (adb first, else Wi-Fi) and sets up forwards. Captures the **seat webcam on the Mac**, as explained below. |
 | `mac_preview.py` | Simple camera preview with YOLO. |
-| `tests/test_perception_sim.py` | 8 synthetic traffic scenarios through the real geometry. **All 8 pass.** |
+| `tests/test_perception_sim.py` | 12 synthetic traffic scenarios through the real geometry, including noisy detector boxes and a lead car's brake lights coming on. **All 12 pass.** |
+| `tests/test_security_rides.py` | Park-mode state machine, pre-roll recordings and ride incidents. **11/11 pass.** |
+
+**Gotcha:** browsers allow about 6 connections per host. Never keep an MJPEG stream open for a camera that isn't live: check `cameraStatus[cam].live`. The brain also closes a stream after 5 s without frames.
 
 **Camera roles** (`velo_config.json`):
 - `front` = `road_front`
@@ -279,7 +285,11 @@ Lessons:
   - touch → amber, recording and `motion` event
   - valid H.264 MP4s and trigger frames
   - 0 false alarms in 40 s idle after the median filter
-- **Perception scenarios** (8/8): close pass, safe pass, rear collision, crossing pedestrian, 12 m distance accurate to 1 cm, door zone, oncoming car, right hook.
+- **Perception scenarios** (12/12): close pass, safe pass, rear collision, crossing pedestrian, 12 m distance accurate to 1 cm, door zone, oncoming car, right hook; close pass, safe pass and door zone again with 3 % box jitter; and lead-car brake lights.
+- **HUD** at `/hud`, live in Chrome:
+  - ride view: AI 8.4 Hz, road model 5.4 Hz, GPS fix
+  - park view: detected the owner at the bike → "Someone nearby", recording
+- **GPS:** reports a fix with 5 satellites indoors near a window. Readings under 2 km/h count as stopped (GPS jitter).
 
 **Not yet verified:**
 - **YOLOP road / lane / bike-lane detection on a real street.** There was no street footage, so record a ride and test with `--front ride.mp4`.

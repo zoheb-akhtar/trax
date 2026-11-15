@@ -4,6 +4,7 @@
 models/
 # park-mode recordings and camera captures (private)
 recordings/
+rides/
 captures/
 hw_diag/out/
 # local machine state
