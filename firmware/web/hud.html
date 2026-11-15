@@ -104,6 +104,7 @@
     <span>GPS <b id="gps">–</b></span>
     <span>AI <b id="ai">–</b></span>
     <span>Road <b id="roadhz">–</b></span>
+    <span>System <b id="health">–</b></span>
   </div>
 </header>
 
@@ -351,6 +352,10 @@ function render() {
   $('gps').textContent = S.mcu ? (S.position ? 'fix' : `${S.mcu.satellites || 0} sats`) : 'off';
   $('ai').textContent = S.perf && S.perf.aiHz != null ? `${S.perf.aiHz} Hz` : '–';
   $('roadhz').textContent = S.road ? `${S.road.hz} Hz` : '–';
+  // safety monitor: what's down / degraded (system alerts also lead the alert list)
+  const hs = S.health ? S.health.status : null;
+  $('health').textContent = hs === 'ok' ? 'OK' : hs === 'degraded' ? 'degraded' : hs === 'down' ? 'part offline' : '–';
+  $('health').style.color = hs === 'ok' ? css('--ok') : hs ? css('--caution') : '';
   const cams = S.sources || ['front'];
   if (park) {
     camTiles($('parkCams'), ['rear', ...cams.filter(c => c !== 'rear')].filter(c => cams.includes(c)), true);
@@ -372,7 +377,8 @@ function render() {
     $('alerts').classList.toggle('muted', !(S.alerts || []).length);
     // chips: lane, relevant traffic light, lead vehicle
     const lane = S.road && S.road.ok && S.road.laneType !== 'unknown' ? S.road : null;
-    chip('cLane', lane && `${lane.laneType === 'bike_lane' ? 'Bike lane' : 'Traffic lane'} · ${Math.round(lane.laneConfidence * 100)}%`);
+    // only call it a bike lane when the device is confident (>= 55 %, e.g. curb, green paint or a bike symbol)
+    chip('cLane', lane && `${lane.laneType === 'bike_lane' && lane.laneConfidence >= 0.55 ? 'Bike lane' : lane.laneType === 'bike_lane' ? 'Lane' : 'Traffic lane'} · ${Math.round(lane.laneConfidence * 100)}%`);
     const light = (S.detections || []).find(d => d.relevant && d.light);
     chip('cLight', light && `${light.light[0].toUpperCase() + light.light.slice(1)} light${light.distanceM ? ` · ${Math.round(light.distanceM)} m` : ''}`,
          light && (light.light === 'green' ? css('--ok') : css('--danger')));

@@ -57,6 +57,7 @@ import numpy as np
 import board as B
 import detectors as D
 import geometry as G
+import health as HL
 import perception as P
 import rides as RL
 import security as S
@@ -203,6 +204,18 @@ def make_source(name, spec, board):
     return MacCameraSource(name, spec)
 
 
+class ReplaySource(Source):
+    """A camera from a recorded ride (capture.py), played back with its original timing."""
+
+    def __init__(self, name, folder, t0c, t0w, speed):
+        super().__init__(name)
+        import capture as C
+
+        self.status = "replay"
+        threading.Thread(target=C.replay_frames, args=(folder, name, self.put, t0c, t0w, speed),
+                         daemon=True).start()
+
+
 class Decoder:
     """Decodes JPEGs, at half size when they are big (the front camera's 1640x1232)."""
 
@@ -220,15 +233,17 @@ class Decoder:
 # ---- the brain ------------------------------------------------------------------------
 class Brain:
     def __init__(self, sources, cfg, detector, world=None, use_road=True, mcu=None, voice=False,
-                 world_hz=3.0, security_cam_hz=2.0):
+                 world_hz=3.0, security_cam_hz=2.0, road_size=320, zoom=True):
         self.sources, self.cfg = sources, cfg
         self.detector, self.world = detector, world
         self.faces = D.FaceDetector()
         self.world_hz, self.security_cam_hz = world_hz, security_cam_hz
+        self.zoom, self.zoom_hz = zoom, 3.0
         self.engine = P.Perception(cameras=tuple(sources))
         self.lock = threading.Lock()
         self.mode, self.alarm = "ride", False
         self.detections, self.alerts, self.surroundings = [], [], {}
+        self.last_ai_t = None
         self.perf = {}
         self.voice = Voice() if voice else None
         self.decoders = {c: Decoder() for c in sources}
@@ -253,7 +268,8 @@ class Brain:
         if use_road and front:
             import road as R
 
-            self.road = R.RoadModel(P.cam_model(front), lambda: self._frame_for_road(front),
+            self.road = R.RoadModel(P.cam_model(front), lambda: self._frame_for_road(front), size=road_size,
+                                    get_motion=
                                     lambda: (mcu.speed_mps() if mcu else None,
                                              mcu.yaw_rate(imu["axis"], imu["sign"]) if mcu else None))
         threading.Thread(target=self._run, daemon=True, name="brain").start()
@@ -328,7 +344,11 @@ class Brain:
             # recompiles for a new batch size / shape combination (that costs seconds)
             results = [self.detector([f])[0] for f in frames]
             t_yolo = time.time() - t0
-            if self.world and batch and now - last_world >= 1 / self.world_hz:
+            # focus mode: something dangerous is near -> skip the optional passes, maximum loop rate
+            focus = any(d.get("threat", 0) >= 2 for d in self.detections)
+            ran_world = False
+            if self.world and batch and not focus and now - last_world >= 1 / self.world_hz:
+                ran_world = True
                 last_world = now
                 # alternate cameras so each gets YOLO-World at world_hz / n
                 pick = batch[world_turn % len(batch)]
@@ -338,6 +358,19 @@ class Brain:
                 self._world_ms = (time.time() - tw) * 1000
                 i = [b[0] for b in batch].index(pick[0])
                 results[i] = D.merge(results[i], wres)
+            # zoom pass: the front camera's far field at 2x, like Tesla's narrow forward camera
+            # (never in the same cycle as YOLO-World: the extra passes alternate, so the loop stays fast)
+            if self.zoom and not ran_world and not focus and now - getattr(self, "_last_zoom", 0) >= 1 / self.zoom_hz:
+                fi = next((i for i, b in enumerate(batch) if P.role(b[0]) == "road_front"), None)
+                if fi is not None:
+                    self._last_zoom = now
+                    img = batch[fi][2]
+                    win = D.zoom_window(P.cam_model(batch[fi][0]), img.shape, self._path_u(batch[fi][0]))
+                    zres = self.detector([img[win[1]:win[3], win[0]:win[2]]])[0]
+                    results[fi] = D.merge_zoom(results[fi], zres, win, img.shape)
+            # drop the camera's own vehicle (bike front wheel / handlebar) and configured dead zones
+            for i, (cam, _, _) in enumerate(batch + sec_batch):
+                results[i] = D.drop_ego(*results[i], self.cfg["cameras"].get(cam, {}).get("ignore_bottom", 0.0))
             t1 = time.time()
             self._yolo_ms = 0.8 * getattr(self, "_yolo_ms", t_yolo * 1000) + 0.2 * t_yolo * 1000
             for (cam, t_recv, img), (xyxy, conf, names) in zip(batch + sec_batch, results):
@@ -348,8 +381,10 @@ class Brain:
             road = self.road.state() if self.road else None
             ego = {"speed": self.mcu.speed_mps() if self.mcu else None}
             dets, alerts, sur = self.engine.snapshot(time.time(), ego=ego, road=road)
+            self._road_view = (self.engine.road_view, time.time())
             with self.lock:
                 self.detections, self.alerts, self.surroundings = dets, alerts, sur
+                self.last_ai_t = time.time()
             self.rides.observe(alerts, dets, self.position(), ego["speed"])
             if self.voice:
                 self.voice.say(alerts)
@@ -365,6 +400,17 @@ class Brain:
                 self._perf(n / (time.time() - t_win), infer_ms, age_ms, len(dets))
                 n, t_win = 0, time.time()
             _ = t_start
+
+    def _path_u(self, cam):
+        """Image column where the predicted path meets the far road (centre of the zoom window)."""
+        st = self.road.state() if self.road else {}
+        path = st.get("egoPath") or []
+        far = [p for p in path if p[1] >= 15]
+        if far:
+            uv = P.cam_model(cam).project(far[-1][0], far[-1][1])
+            if uv:
+                return uv[0]
+        return 0.5
 
     def _security_step(self, seen):
         """Park mode: motion on every camera ~5 Hz, people detection where something moves (and
@@ -408,6 +454,9 @@ class Brain:
     def _ticker(self):
         while True:
             self.security.tick()
+            if self.voice:  # say it out loud when a part of the system goes down
+                sys_alerts = [a for a in self.state()["alerts"] if a["kind"] == "system" and a["level"] != "info"]
+                self.voice.say(sys_alerts)
             time.sleep(0.5)
 
     def _perf(self, hz, infer_ms, age_ms, tracks):
@@ -429,17 +478,51 @@ class Brain:
                    "security": self.security.status(), "ts": int(time.time() * 1000),
                    "cameraStatus": {c: {"live": s.live(), "fps": round(s.fps, 1), "status": s.status,
                                         "role": P.role(c)} for c, s in self.sources.items()}}
+        # safety monitor: say what's down, never show a frozen "all clear"
+        road_state = self.road.state() if self.road and self.mode == "ride" else None
+        rv = getattr(self, "_road_view", None)  # lane type confirmed by evidence (bike symbol) if fresh
+        if road_state and rv and rv[0] and time.time() - rv[1] < 1.0 and rv[0].get("laneEvidence"):
+            road_state.update({k: rv[0][k] for k in ("laneType", "laneConfidence", "laneEvidence")})
+        h, sys_alerts, stale = HL.health(self.sources, {c: P.role(c) for c in self.sources}, self.mode,
+                                         self.last_ai_t, self.perf, road_state, self.mcu,
+                                         calibrated={c: v.get("calibrated") for c, v in self.cfg["cameras"].items()})
+        out["health"] = h
+        rear_src = self.source_for_rear().name
+        out["rearCamera"] = rear_src  # which physical camera /stream?camera=rear shows right now
+        # the app draws "rear" detections on its rear view: only keep those from that camera there
+        keep, other = [], []
+        for d in out["detections"]:
+            (other if d["camera"] == "rear" and d.get("source", rear_src) != rear_src
+             and not d.get("alsoSeenBy") else keep).append(d)
+        out["detections"], out["otherDetections"] = keep, other
+        if stale:
+            out["detections"], out["alerts"], out["surroundings"] = [], [], {}
+        rank = {"danger": 0, "caution": 1, "info": 2}
+        out["alerts"] = sorted(sys_alerts + out["alerts"], key=lambda a: rank.get(a["level"], 3))
         pos = self.position()
         out["position"] = pos
         if gps and gps.get("fix") and gps.get("kmh") is not None:
             out["speedKmh"] = round(gps["kmh"], 1)
-        if self.road and self.mode == "ride":
-            out["road"] = self.road.state()
+        if road_state is not None:
+            out["road"] = road_state
         if self.mcu:
             out["mcu"] = {"connected": self.mcu.connected, "imu": bool(self.mcu.hb and self.mcu.hb["imu"]),
                           "gps": bool(self.mcu.hb and self.mcu.hb["gps"]),
                           "satellites": gps["sats"] if gps else 0, "ring": self.mcu.hb["ring"] if self.mcu.hb else None}
         return out
+
+    def source_for_rear(self):
+        """The camera the app's 'rear' means right now (see the HTTP handler)."""
+        want = ("road_rear", "security") if self.mode == "ride" else ("security", "road_rear")
+        for role in want:
+            for c, src in self.sources.items():
+                if P.role(c) == role and src.live():
+                    return src
+        for role in want:
+            for c, src in self.sources.items():
+                if P.role(c) == role:
+                    return src
+        return next(iter(self.sources.values()))
 
     def set_mode(self, mode):
         mode = {"drive": "ride", "park": "security", "lock": "security", "unlock": "ride"}.get(mode, mode)
@@ -473,7 +556,8 @@ class Voice:
 
     SPEAK = {"collision", "close_pass", "rear_collision", "vehicle_behind", "closing_ahead", "in_path",
              "red_light", "stop_sign", "cyclist_behind", "right_hook", "crossing", "oncoming", "blind_spot",
-             "door_zone", "emergency", "vehicle_in_bike_lane", "no_entry", "in_traffic_lane"}
+             "door_zone", "emergency", "vehicle_in_bike_lane", "no_entry", "in_traffic_lane", "system",
+             "lead_braking", "green_light"}
 
     def __init__(self, cooldown_s=5.0):
         self.cooldown_s = cooldown_s
@@ -541,9 +625,12 @@ def make_handler(brain: Brain):
 
         def _camera(self, url):
             cam = parse_qs(url.query).get("camera", ["front"])[0]
-            cam = {"back": "rear"}.get(cam, cam)
-            if cam == "rear" and "rear" not in brain.sources:
-                cam = next((c for c in brain.sources if P.facing(c) == "rear"), "front")
+            if cam in ("rear", "back"):
+                # the app knows "front" and "rear". Its rear view is the road behind (the seat webcam)
+                # while riding, and the security camera while parked; either falls back to the other
+                return brain.source_for_rear()
+            if cam == "security":
+                cam = next((c for c in brain.sources if P.role(c) == "security"), cam)
             return brain.sources.get(cam) or next(iter(brain.sources.values()))
 
         def do_OPTIONS(self):
@@ -881,11 +968,18 @@ def main():
     p.add_argument("--no-road", action="store_true", help="skip YOLOP road / lane understanding")
     p.add_argument("--no-mcu", action="store_true", help="don't talk to the STM32 (ring, IMU, GPS)")
     p.add_argument("--world-hz", type=float, default=3.0)
+    p.add_argument("--road-size", type=int, default=320, choices=(320, 640),
+                   help="YOLOP input size: 640 finds more distant lane lines, ~2.5x the CPU")
+    p.add_argument("--no-zoom", action="store_true", help="skip the centre zoom pass (far objects)")
     p.add_argument("--port", type=int, default=8000)
     p.add_argument("--show", action="store_true", help="open the Tesla-style window")
     p.add_argument("--height", type=int, default=0, help="window tile height (default fits the screen)")
     p.add_argument("--voice", action="store_true", help="speak warnings (macOS say)")
     p.add_argument("--mode", default="ride", choices=("ride", "security"))
+    p.add_argument("--record", metavar="DIR", help="save every camera + IMU/GPS line (replay later with --replay)")
+    p.add_argument("--record-fps", type=float, default=10.0)
+    p.add_argument("--replay", metavar="DIR", help="run a recorded ride through the whole system")
+    p.add_argument("--replay-speed", type=float, default=1.0)
     a = p.parse_args()
 
     # Thread pools: torch and OpenCV each default to one thread per core and spin-wait; together
@@ -897,21 +991,41 @@ def main():
     cv2.setNumThreads(2)
     cfg = G.load_config()
     P.configure(cfg)
-    board = B.Board()
-    sources = {}
-    for name, spec in (("front", a.front), ("seat", a.seat), ("rear", a.rear)):
-        if spec.lower() != "none":
-            sources[name] = make_source(name, spec, board)
-    mcu = None
-    if not a.no_mcu:
-        import mcu as M
+    sources, mcu = {}, None
+    if a.replay:  # a recorded ride, through the whole system (cameras + IMU/GPS as recorded)
+        import capture as C
 
-        mcu = M.Mcu()
+        t0c, t0w = C.start_time(a.replay), time.time() + 1.0
+        for name in C.capture_cameras(a.replay):
+            sources[name] = ReplaySource(name, a.replay, t0c, t0w, a.replay_speed)
+        if not a.no_mcu:
+            mcu = C.ReplayMcu(a.replay, t0c, t0w, a.replay_speed)
+        print(f"[brain] replaying {a.replay} ({', '.join(sources)})", flush=True)
+    else:
+        board = B.Board()
+        for name, spec in (("front", a.front), ("seat", a.seat), ("rear", a.rear)):
+            if spec.lower() != "none":
+                sources[name] = make_source(name, spec, board)
+        if not a.no_mcu:
+            import mcu as M
+
+            mcu = M.Mcu()
+    if a.record:
+        import capture as C
+
+        cap = C.RideCapture(a.record, list(sources), a.record_fps)
+        import atexit
+
+        atexit.register(cap.close)
+        for src in sources.values():
+            src.listeners.append(cap.frame)
+        if mcu:
+            mcu.raw_listener = cap.sensor
     world = None
     if not a.no_world and os.path.exists(D.WorldDetector.PATH):
         world = D.WorldDetector()
     brain = Brain(sources, cfg, D.YoloDetector(a.model, a.imgsz, a.fp16), world, not a.no_road, mcu, a.voice,
-                  world_hz=a.world_hz)
+                  world_hz=a.world_hz, road_size=a.road_size, zoom=not a.no_zoom)
     if a.mode == "security":
         brain.set_mode("security")
 
@@ -921,8 +1035,12 @@ def main():
     print(f"[brain] app API on http://{lan_ip()}:{a.port}  (simulator: localhost:{a.port})", flush=True)
 
     import atexit
+    import signal
+    import sys
 
     atexit.register(brain.rides.end)
+    # Ctrl+C and `kill` both end cleanly: the ride is saved and recordings are flushed
+    signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
     if a.show:
         show_loop(brain, a.height or 420)
     else:

@@ -172,7 +172,16 @@ def locate(camera, label, box):
     w = np.array([1 / s ** 2 for _, s in est])
     d = float(np.dot(w, [e[0] for e in est]) / w.sum())
     sigma = float(1 / math.sqrt(w.sum()))
-    lateral = cam.lateral(u, d * math.cos(cam.pitch) + cam.h * math.sin(cam.pitch))
+    depth = d * math.cos(cam.pitch) + cam.h * math.sin(cam.pitch)
+    half = HALF_W.get(group(label), 0.3)
+    if x1 < 0.01 and x2 < 0.99:
+        # cut off by the left frame edge: the box centre is not the object's centre. Its inner
+        # (right) side is real; the centre is half a width further out.
+        lateral = cam.lateral(x2, depth) - half
+    elif x2 > 0.99 and x1 > 0.01:
+        lateral = cam.lateral(x1, depth) + half
+    else:
+        lateral = cam.lateral(u, depth)
     x, z = (-lateral, -d) if cam.backward else (lateral, d)
     return (x, z), d, sigma
 
@@ -290,6 +299,8 @@ class Perception:
         self.cam_t = {c: 0.0 for c in cameras}
         self._light_prev = {}
         self._green_until = 0.0
+        self._pending = {}
+        self.road_view = None
 
     # ---- tracking ----------------------------------------------------------------------
     def update(self, camera, t, xyxy_norm, conf, cls_names, frame=None):
@@ -382,9 +393,16 @@ class Perception:
             ts = [p[0] for p in hist]
             x1, y1, x2, y2 = trk.box
             truncated = y1 < 0.01 or y2 > 0.99 or (y2 - y1) > 0.9
-            if not truncated:
-                rate = _slope(ts, [math.log(max(p[1], 1e-4)) for p in hist])  # 1/s
-                if rate > 0.08:
+            # box growth only means something on a box big enough to measure, growing steadily
+            # (a 40-pixel box jittering by a few pixels looks like a crash course otherwise)
+            if not truncated and (y2 - y1) >= 0.07:
+                logs = [math.log(max(p[1], 1e-4)) for p in hist]
+                rate = _slope(ts, logs)  # 1/s
+                fit = np.array(ts) - ts[-1]
+                pred = np.array(logs[-1]) + rate * fit
+                ss_res = float(((np.array(logs) - pred) ** 2).sum())
+                ss_tot = float(((np.array(logs) - np.mean(logs)) ** 2).sum()) or 1e-9
+                if rate > 0.08 and 1 - ss_res / ss_tot > 0.6:
                     ttc = 1.0 / rate
             mp = [p for p in hist if p[2] is not None]
             if len(mp) >= 4 and mp[-1][0] - mp[0][0] >= 0.35:
@@ -417,6 +435,8 @@ class Perception:
         ego: {"speed": m/s or None} from GPS. road: road.RoadModel.state() or None."""
         ego = ego or {}
         v_ego = ego.get("speed")
+        road = self._lane_evidence(road, now)
+        self.road_view = road
         live = [t for t in self.tracks.values()
                 if not t.handed_off and t.box is not None and t.confirmed()
                 and now - t.last_seen <= self.lost_grace_s]
@@ -479,11 +499,13 @@ class Perception:
             if road and x is not None and road.get("ok"):
                 d["inPath"] = _in_corridor(road, x, z, 0.9)
             threats = _threats(trk, d, ttc, riding, road, v_ego) if role(trk.camera) != "security" else []
+            # imminent (< 1.2 s): fire at once; anything else must hold for two cycles first
+            urgent = (ttc is not None and ttc < 1.2) or bool(d.get("cpa") and d["cpa"]["tS"] < 1.2)
             for kind, level, text in threats:
                 wanted[f"{kind}-{trk.gid}"] = {"id": f"{kind}-{trk.gid}", "kind": kind, "level": level, "text": text,
                                                "camera": facing(trk.camera), "source": trk.camera,
                                                "trackId": trk.gid, "bearingDeg": d.get("bearingDeg"),
-                                               "side": _side(d)}
+                                               "side": _side(d), "urgent": urgent}
             d["threat"] = max((LEVELS[lv] for _, lv, _ in threats), default=0)
             dets.append(d)
         # lead vehicle: the nearest thing ahead in the bike's path
@@ -508,6 +530,21 @@ class Perception:
             wanted[kind] = {"id": kind, "kind": kind, "level": level, "text": text, "camera": "front",
                             "source": "front", "trackId": -1, "bearingDeg": 0, "side": "ahead"}
         return dets, self._update_alerts(wanted, now), surroundings(dets, road)
+
+    def _lane_evidence(self, road, now):
+        """A bike symbol painted in the lane ahead (YOLO-World 'bike lane marking') is independent
+        proof of a bike lane: confirm a narrow lane as one (until ~5 s after the last symbol)."""
+        if not road or not road.get("ok"):
+            return road
+        for t in self.tracks.values():
+            if t.label == "bike lane marking" and now - t.last_seen < 0.5 and t.hist and t.hist[-1][2] is not None:
+                x, z = t.hist[-1][2], t.hist[-1][3]
+                if 0 < z < 25 and abs(x - _path_x(road, z)) < 1.5:
+                    self._marking_t = now
+        if now - getattr(self, "_marking_t", -99) < 5.0 and (road.get("laneWidthM") or 0) < 2.8:
+            road = dict(road, laneType="bike_lane", laneConfidence=max(road.get("laneConfidence", 0), 0.8),
+                        laneEvidence="bike symbol")
+        return road
 
     def _light_change(self, gid, colour, now, v_ego):
         """Tesla's green-light chime: the light we are waiting at turned green."""
@@ -545,11 +582,18 @@ class Perception:
         return list(best.values())
 
     def _update_alerts(self, wanted, now, hold_s=1.0):
+        # confirmation: a new alert must be wanted in two consecutive cycles (kills one-frame
+        # glitches), unless it is urgent (contact in under 1.2 s), which fires immediately
+        self._pending = {aid: n + 1 for aid, n in self._pending.items() if aid in wanted}
         for aid, a in wanted.items():
             if aid in self._alerts:
                 self._alerts[aid].update(a, lastTrue=now)
-            else:
+                continue
+            n = self._pending.get(aid, 0) + (0 if aid in self._pending else 1)
+            self._pending[aid] = n
+            if n >= 2 or a.get("urgent"):
                 self._alerts[aid] = {**a, "since": now, "lastTrue": now}
+                self._pending.pop(aid, None)
         for aid in [k for k, a in self._alerts.items() if now - a["lastTrue"] > hold_s]:
             del self._alerts[aid]
         # most severe first; at equal severity the more specific situation wins ("oncoming car in
@@ -560,7 +604,7 @@ class Perception:
         for a in out:  # one alert per tracked object: its most severe one
             top.setdefault(a["trackId"] if a["trackId"] >= 0 else a["id"], a)
         out = [a for a in out if top[a["trackId"] if a["trackId"] >= 0 else a["id"]] is a]
-        return [{k: v for k, v in a.items() if k != "lastTrue"} for a in out]
+        return [{k: v for k, v in a.items() if k not in ("lastTrue", "urgent")} for a in out]
 
 
 def _rank(t):
@@ -656,22 +700,31 @@ def _threats(trk, d, ttc, riding, road, v_ego):
             # collision-type warnings only for things in the path or really moving into it, and only
             # once the velocity estimate has settled (no false alarms from the first noisy frames)
             settled = getattr(trk, "vel_std", 99) < 1.2
-            entering = pos and abs(x) >= half + 0.3 and abs(vx) > 0.5 and np.sign(vx) == -np.sign(x)
+            # a box cut off by the frame's side edge gives unreliable sideways motion (perspective +
+            # clipping make an overtaken car seem to drift toward you)
+            edge_cut = trk.box[0] < 0.01 or trk.box[2] > 0.99
+            entering = pos and not edge_cut and half + 0.3 <= abs(x) < 4.5 and abs(vx) > 0.5 \
+                and np.sign(vx) == -np.sign(x)
             in_lane = pos and abs(x) < half + 0.3
             hit_soon = (settled and (in_lane or entering) and cpa and cpa["tS"] < 2.5 and cpa["missM"] < half + 0.2) \
                 or (in_path and ttc is not None and ttc < 2.5)
             near_soon = (settled and (in_lane or entering) and cpa and cpa["tS"] < 4 and cpa["missM"] < half + 0.5) \
                 or (in_path and ttc is not None and ttc < 5)
-            oncoming = g == "vehicle" and pos and settled and vz < -((v_ego or 0) + 3) and abs(x) < 4 and z < 40
+            # oncoming = moving toward us over the ground, which needs the bike's own speed: without
+            # it, a slower car we're catching up with looks exactly the same
+            oncoming = g == "vehicle" and pos and settled and v_ego is not None and vz + v_ego < -3 \
+                and abs(x) < 4 and z < 40
             if oncoming:
                 head_on = abs(x) < half + 0.3 and z < 25
                 out.append(("oncoming", "danger" if head_on else "info",
                             f"Oncoming {label} in your lane" if head_on else f"Oncoming {label} {side}".strip()))
+            elif g == "vehicle" and pos and settled and not edge_cut and -4.0 < x < -0.5 and vx > 1.2 and 0 < z < 15 \
+                    and cpa and cpa["tS"] < 3.0 and cpa["missM"] < half + 0.5:
+                # a car ahead-left whose predicted path actually cuts across yours
+                out.append(("right_hook", "danger", f"{what} turning across you"))
             elif hit_soon:
                 out.append(("collision", "danger", f"{what} ahead: brake"))
-            elif g == "vehicle" and pos and x < -0.5 and vx > 0.7 and 0 < z < 15:
-                out.append(("right_hook", "danger", f"{what} turning across you"))
-            elif g in ("person", "animal", "micromobility", "bicycle") and pos and abs(vx) > 0.7 and 0 < z < 15 \
+            elif g in ("person", "animal", "micromobility", "bicycle") and pos and settled and abs(vx) > 0.7 and 0 < z < 15 \
                     and abs(x - (_path_x(road, z) if road_ok else 0)) < 4 \
                     and np.sign(-(x - (_path_x(road, z) if road_ok else 0))) == np.sign(vx):
                 out.append(("crossing", "caution", f"{what} crossing ahead"))
@@ -680,7 +733,8 @@ def _threats(trk, d, ttc, riding, road, v_ego):
             elif g in ("person", "animal", "obstacle") and in_path and pos and z < 12:
                 out.append(("in_path", "caution", f"{what} in your path"))
             if g == "vehicle" and road_ok and pos and road.get("laneType") == "bike_lane" \
-                    and road.get("laneConfidence", 0) >= 0.5 and _in_lane(road, x, z):
+                    and road.get("laneConfidence", 0) >= 0.55 and road.get("laneStableS", 0) >= 1.0 \
+                    and _in_lane(road, x, z):
                 out.append(("vehicle_in_bike_lane", "caution", f"{what} in the bike lane ahead"))
             if g == "vehicle" and d.get("stationary") and pos and 0.6 < x < 2.8 and 1 < z < 15:
                 clearance = x - HALF_W["vehicle"] - BIKE_HALF_W  # a car door opens ~1 m

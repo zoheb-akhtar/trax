@@ -111,8 +111,14 @@ The hub's USB-C port only charges: a board plugged in there gets power but no da
 
 ```
 .venv/bin/python velo_brain.py --show --voice     # everything, with the Tesla-style window (P park, R ride)
-.venv/bin/python tests/test_perception_sim.py     # 12 traffic scenarios (clean + noisy) through the real geometry
+./run_tests.sh                                    # every test (scenarios, bike lanes, park mode, health, real footage)
+.venv/bin/python tools/calibrate.py               # calibrate a camera mount on the bike (grid on the road)
+.venv/bin/python velo_brain.py --record captures/ride1    # record a ride (all cameras + IMU/GPS)
+.venv/bin/python velo_brain.py --replay captures/ride1 --show   # run it through the whole system again
+.venv/bin/python tests/test_perception_sim.py     # 13 traffic scenarios (clean + noisy) through the real geometry
 .venv/bin/python tests/test_security_rides.py     # park-mode state machine, recordings, ride incidents
+./tools/get_testdata.sh && .venv/bin/python tests/test_real_footage.py   # real street drive: lanes, pitch, no false alarms
+.venv/bin/python tools/eval_road.py testdata/drive.mp4 --zoom --out testdata/vid   # annotated frames of any video
 ./flash_mcu.sh velo_mcu                           # STM32 firmware the brain talks to (ring, IMU, GPS)
 ```
 
@@ -124,6 +130,8 @@ The hub's USB-C port only charges: a board plugged in there gets power but no da
 | `perception.py` | tracking across cameras, metric 3D positions, velocities, collision prediction (CPA), rider situations |
 | `security.py` | park mode: motion detection, pre-trigger recording (H.264), faces, events, state machine |
 | `mcu.py` + `velo_mcu/` | STM32 link + firmware: ring patterns, hazard direction, IMU tamper / crash / pothole, GPS |
+| `health.py` | safety monitor: what's down / degraded, system alerts, never a frozen "all clear" |
+| `capture.py` | ride capture + replay (the data engine): record real rides, re-run them through the brain |
 | `rides.py` | ride log + dashcam: danger situations become incidents with clips, GPS and close-pass clearance |
 | `web/hud.html` | live web HUD at `http://localhost:8000/hud` (Tesla ride view, Ring park view) |
 | `api/velo-api.ts` | TypeScript types + client for the app |

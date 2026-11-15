@@ -58,6 +58,9 @@ For the app team. The device (today: `velo_brain.py` on a Mac standing in for th
   "road": {                            // ride mode, front camera
     "ok": true, "laneType": "bike_lane" | "traffic_lane" | "unknown", "laneConfidence": 0.65,
     "laneWidthM": 1.7, "offsetM": 0.2,              // + = right of the lane centre
+    "laneStableS": 3.2,                             // how long the lane type has held (voted over ~2 s)
+    "multiLane": true,                              // width > 4.6 m: a middle line was missed
+    "pitchDeg": -1.5,                               // camera tilt, self-calibrated from the lane vanishing point
     "leftBoundary":  {"type": "line" | "edge", "distanceM": 0.9, "points": [[x, z], ...]},
     "rightBoundary": {...},
     "egoPath": [[x, z], ...]           // predicted path, 0-20 m ahead (Tesla's blue ribbon)
@@ -93,6 +96,7 @@ Distances and positions come from each camera's mount geometry (`velo_config.jso
 | `emergency` | caution / danger | ambulance, fire truck, police car | "pull right" |
 | `in_traffic_lane` | caution | you're in a car lane with a car coming up behind | |
 | `leaving_bike_lane` | info | drifting out of the bike lane | |
+| `system` | info / caution / danger | part of Velo is down: see `health` | always show; speak caution and above |
 | `lead_braking` | caution | the car ahead in your path just hit its brakes (brake lights) | red glow on the lead car |
 | `green_light` | info | you're stopped and the light that applies to you turned green | chime (Tesla's green-light chime) |
 | `red_light` / `yellow_light` | info | only for the light that applies to you (`relevant`) | traffic-light icon |
@@ -106,6 +110,24 @@ Alerts have hysteresis: each is held for about 1 s after the condition clears, s
 - Draw `road.leftBoundary` / `rightBoundary` as lane lines: dashed white for `"line"`, red curb for `"edge"`.
 - Draw `road.egoPath` as the ribbon: green in a bike lane, blue otherwise.
 - Light the left or right zone when `surroundings.zones.left/right` has something with `threat >= 2`.
+
+## Safety monitor (`health`) — show it
+
+```jsonc
+"health": {"status": "ok" | "degraded" | "down",
+           "parts": {"front": {"status": "ok", "fps": 30, "calibrated": "2026-11-16"},
+                     "seat": {"status": "down", "reason": "reconnecting"},
+                     "perception": {"status": "ok", "hz": 8.1, "latencyMs": 160},
+                     "road": {...}, "mcu": {...}, "gps": {"status": "degraded", "reason": "no fix ..."}}}
+```
+
+- **When a part is down, a `system` alert leads the alert list** and says which warnings are unavailable, e.g. "Rear camera offline: no warnings from behind". **Show it, and speak it.** A rider who thinks "nothing behind me" must know when Velo can't see behind.
+- **If perception stops**, `detections` and `alerts` come back empty, plus a danger `system` alert: "Velo warnings stopped: ride with care". The app should never show a frozen "all clear".
+- **`calibrated: false` on a road camera** means distances are approximate. Prompt the owner to run `tools/calibrate.py`.
+
+## Alert confirmation
+
+A new alert must hold for **two perception cycles** (about 0.15 s) before it appears, which removes one-frame glitches. An **imminent** danger (contact in under 1.2 s) appears immediately. When something dangerous is near, the device drops its optional passes (zoom, YOLO-World) to run its loop as fast as possible.
 
 ## Ride log and dashcam incidents
 
@@ -122,6 +144,14 @@ GET /rides   -> {"rides": [...]}  past rides (a ride ends when the bike is locke
 Each incident has these fields: `{id, ts, situation, text, side, position, label, distanceM, objectSpeedKmh, closingMps, clearanceM, recording}`. Its video is at `/recordings/<recording>/front.mp4` (and `seat.mp4` / `rear.mp4`).
 
 **Ride history idea:** a map of the `track` with incident pins. Tapping a pin plays the clip and shows "Car passed 0.5 m from you at 48 km/h". That's evidence of close passes for the rider.
+
+## Which camera is "rear"
+
+The app knows `front` and `rear`. `/stream?camera=rear` shows:
+- **while riding:** the **seat webcam**, the road behind (falling back to the security camera if the webcam is off)
+- **while parked:** the **security camera** (Pi camera 2)
+
+`/state.rearCamera` says which physical camera that is right now. `detections` only contains rear detections **from that camera**, so boxes always land on the picture the app shows. Detections from the other rear camera go to `otherDetections`. To show a specific camera, use `/stream?camera=seat` or `/stream?camera=security`.
 
 ## Camera status
 

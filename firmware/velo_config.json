@@ -10,8 +10,8 @@
     },
     "seat": {
       "role": "road_rear",
-      "hfov": 70.0,
-      "vfov": 43.0,
+      "hfov": 78.0,
+      "vfov": 48.3,
       "height_m": 0.85,
       "pitch_deg": 4.0,
       "yaw_deg": 180

@@ -81,6 +81,7 @@ export interface Detection {
 
 // ----------------------------------------------------------------------------- alerts
 export type AlertKind =
+  | 'system'   // part of Velo is down / degraded: says which warnings are unavailable
   | 'collision' | 'rear_collision' | 'close_pass' | 'right_hook' | 'oncoming' | 'crossing'
   | 'closing_ahead' | 'in_path' | 'blind_spot' | 'beside' | 'vehicle_behind' | 'cyclist_behind'
   | 'door_zone' | 'vehicle_in_bike_lane' | 'emergency' | 'lead_braking' | 'in_traffic_lane'
@@ -122,6 +123,14 @@ export interface Road {
   rightBoundary?: LaneBoundary;
   /** Predicted path 0-20 m ahead (draw as the ribbon). */
   egoPath?: XZ[];
+  /** Seconds the lane type has held (voted over ~2 s). */
+  laneStableS?: number;
+  /** Wider than any lane: a middle line was missed. */
+  multiLane?: boolean;
+  /** What confirmed a bike lane, e.g. "bike symbol". */
+  laneEvidence?: string;
+  /** Camera tilt, self-calibrated from the lane vanishing point. */
+  pitchDeg?: number;
   drivableFraction?: number;
   hz?: number;
 }
@@ -188,6 +197,18 @@ export interface Ride {
   closestPassM: number | null; track: [lat: number, lon: number][];
 }
 
+// ----------------------------------------------------------------------------- health
+export interface HealthPart {
+  status: 'ok' | 'degraded' | 'down';
+  reason?: string | null;
+  fps?: number; hz?: number; latencyMs?: number;
+  /** Road cameras: date of the mount calibration (tools/calibrate.py), or false = distances approximate. */
+  calibrated?: string | false;
+}
+/** Safety monitor. When a part is down, a 'system' alert says which warnings are unavailable, and if
+ *  perception stops, detections/alerts are emptied (never a frozen "all clear"). */
+export interface Health { status: 'ok' | 'degraded' | 'down'; parts: Record<string, HealthPart> }
+
 // ----------------------------------------------------------------------------- /state
 export interface CameraStatus { live: boolean; fps: number; status: string; role: CameraRole }
 
@@ -211,6 +232,11 @@ export interface DeviceState {
   security?: Security;
   mcu?: { connected: boolean; imu: boolean; gps: boolean; satellites: number; ring: string | null };
   perf?: Record<string, unknown>;
+  health?: Health;
+  /** The physical camera /stream?camera=rear shows now (seat webcam while riding, security cam parked). */
+  rearCamera?: CameraSource;
+  /** Detections from the rear camera that is NOT the one shown as "rear" (so boxes stay on the right picture). */
+  otherDetections?: Detection[];
   ts?: number;
 }
 
@@ -244,7 +270,7 @@ export class VeloClient {
   chirp() { return this.post('/chirp'); }
 
   /** MJPEG: use as an <Image>/<img> source (or a WebView on React Native). */
-  streamUrl(camera: CameraSource = 'front') { return `${this.base}/stream?camera=${camera}`; }
+  streamUrl(camera: CameraSource | 'security' = 'front') { return `${this.base}/stream?camera=${camera}`; }
   snapshotUrl(camera: CameraSource = 'front') { return `${this.base}/snapshot?camera=${camera}`; }
   /** e.g. fileUrl(ev.recording!, 'rear_trigger.jpg') for a notification picture. */
   fileUrl(recording: string, file: string) { return `${this.base}/recordings/${recording}/${file}`; }
