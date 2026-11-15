@@ -22,6 +22,15 @@ export function pictureUri(relativePath: string) {
   return new File(Paths.document, relativePath).uri;
 }
 
+/** A saved picture as base64 text, for sending to the AI agent. Null if it can't be read. */
+export async function pictureAsBase64(relativePath: string) {
+  try {
+    return await new File(Paths.document, relativePath).base64();
+  } catch {
+    return null;
+  }
+}
+
 export function deleteRidePictures(rideId: string) {
   try {
     const folder = new Directory(Paths.document, 'rides', rideId);

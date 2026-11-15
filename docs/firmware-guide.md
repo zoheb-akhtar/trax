@@ -120,6 +120,8 @@ the distance estimate depends on the field of view.
 
 - [ ] `speedKmh` from the GPS module, updated about once a second. Report `0` when
       stopped, and omit it until there is a fix.
+- [ ] `position` (`{ "lat": ..., "lon": ... }`) from the same GPS fix, in **both** ride and
+  security mode. This is what powers "find my bike". Omit it until the GPS has a fix.
 - [ ] `battery` as 0–100, if the power board can report it. Omit it otherwise.
 
 **Check:** the app's speed reads 0 at rest and rises when the bike moves.

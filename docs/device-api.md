@@ -25,6 +25,7 @@ Polled by the app about 4 times a second. Every field is optional; send what you
   "alarm": false,
   "battery": 82,
   "speedKmh": 21.5,
+  "position": { "lat": 42.343, "lon": -71.0858 },
   "cameras": ["front", "rear"],
   "detections": [
     { "id": 7, "label": "car", "confidence": 0.91, "box": [0.12, 0.40, 0.30, 0.25], "camera": "rear" }
@@ -38,6 +39,9 @@ Polled by the app about 4 times a second. Every field is optional; send what you
 - `mode`: `"ride"` or `"security"`.
 - `alarm`: `true` while the alarm is sounding.
 - `battery`: 0–100.
+- `position`: the GPS fix, in decimal degrees. Leave it out (or send `null`) until there is a
+  fix. The app uses it for "find my bike": it remembers the last position it heard, so it can
+  show where the bike was when it went out of range.
 - `detections[].box`: `[x, y, width, height]`, each 0–1 relative to the frame, origin top-left.
 - `cameras`: which cameras are fitted. Defaults to `["front"]`. With both, the app shows a Front / Rear switch.
 - `detections[].camera`: which camera saw it, `"front"` (default) or `"rear"`.

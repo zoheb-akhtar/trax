@@ -119,6 +119,12 @@ export function SecurityEntryDetail({
 
       <ScrollView contentContainerStyle={styles.detail} showsVerticalScrollIndicator={false}>
         {entry.place && <ThemedText themeColor="textSecondary">Near {entry.place}</ThemedText>}
+        {entry.description && (
+          <View style={styles.seen}>
+            <ThemedText type="label">What Velo saw</ThemedText>
+            <ThemedText>{entry.description}</ThemedText>
+          </View>
+        )}
 
         {entry.pictures.length === 0 ? (
           <ThemedText themeColor="textSecondary">
@@ -168,6 +174,7 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.three,
   },
   detail: { gap: Spacing.three, paddingBottom: Spacing.six },
+  seen: { gap: Spacing.one },
   picture: {
     width: '100%',
     aspectRatio: 4 / 3,

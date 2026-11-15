@@ -1,7 +1,6 @@
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   Keyboard,
   Pressable,
   StyleSheet,
@@ -43,113 +42,74 @@ function describeParking(p: Parking) {
 
 // ---- Trip card: what the planned route looks like, and the button to start it --------
 
-/** Summary of the planned trip: time, parking, closures, and Start. */
+/**
+ * The planned trip, kept to what a rider needs before setting off: where, how long, one
+ * thing worth knowing, and Start. Cancel is a full-size button so it is easy to dismiss.
+ */
 export function TripCard() {
   const trip = useNav();
-  const { nav, route } = trip;
-  const parking = trip.parking.find((p) => p.good && p.fromDestination < 350) ?? null;
-  const { roads } = trip;
+  const { nav, route, roads, destination } = trip;
   const share = useMemo(() => (route ? bikeLaneShare(route, roads) : null), [route, roads]);
+  const ready = trip.status === 'ready' && route;
+
+  const facts = ready
+    ? [
+        formatDuration(route.duration),
+        formatDistance(route.distance),
+        share !== null ? `${Math.round(share * 100)}% bike lanes` : null,
+      ]
+        .filter(Boolean)
+        .join(' · ')
+    : trip.status === 'routing'
+      ? 'Finding a cycling route…'
+      : null;
 
   return (
     <View style={styles.panel}>
-      <View style={styles.summary}>
-        {trip.status === 'routing' && (
-          <>
-            <ActivityIndicator color="#111111" />
-            <Text style={styles.body}>Finding a cycling route…</Text>
-          </>
-        )}
-        {trip.status === 'error' && <Text style={[styles.error, styles.grow]}>{trip.error}</Text>}
-        {trip.status === 'ready' && route && (
-          <>
-            <Text style={styles.big}>{formatDuration(route.duration)}</Text>
-            <Text style={[styles.muted, styles.grow]} numberOfLines={1}>
-              {formatDistance(route.distance)} to {trip.destination?.name}
-            </Text>
-          </>
-        )}
-        <Pressable
-          onPress={() => nav.clear()}
-          hitSlop={12}
-          style={styles.close}
-          accessibilityLabel="Clear route">
-          <SymbolView
-            name={{ ios: 'xmark.circle.fill', android: 'cancel', web: 'cancel' }}
-            size={22}
-            tintColor="#6B7076"
-          />
-        </Pressable>
+      <View style={styles.row}>
+        <View style={styles.grow}>
+          <Text style={styles.title} numberOfLines={1}>
+            {destination?.name ?? 'Route'}
+          </Text>
+          {facts && <Text style={styles.muted}>{facts}</Text>}
+          {trip.status === 'error' && <Text style={styles.error}>{trip.error}</Text>}
+        </View>
+        <Button title="Cancel" size="small" variant="secondary" onPress={() => nav.clear()} />
       </View>
 
-      {trip.status === 'ready' && (
-        <>
-          {trip.destination?.isParking ? (
-            // Already heading to a parking spot: say so, and don't offer another.
-            <View style={styles.row}>
-              <View style={styles.badge}>
-                <Text style={styles.badgeText}>P</Text>
-              </View>
-              <Text style={styles.body} numberOfLines={1}>
-                Parking at the end · {trip.destination.detail}
-              </Text>
-            </View>
-          ) : (
-            <ParkingLine
-              state={trip.extras}
-              parking={parking}
-              onPark={(p) =>
-                nav.setDestination({
-                  name: 'Bike parking',
-                  detail: describeParking(p),
-                  lat: p.lat,
-                  lon: p.lon,
-                  isParking: true,
-                })
-              }
-              onRetry={() => nav.retryExtras()}
-            />
+      {ready && <Heads trip={trip} />}
+      {ready && trip.extras !== 'ready' && trip.roads.length === 0 && (
+        <View style={styles.row}>
+          <Text style={[styles.muted, styles.grow]}>
+            {trip.extras === 'error'
+              ? 'The street map didn’t load. The route still works.'
+              : 'Loading the street map…'}
+          </Text>
+          {trip.extras === 'error' && (
+            <Button title="Retry" size="small" variant="secondary" onPress={() => nav.retryExtras()} />
           )}
-          {share !== null && (
-            <View style={styles.row}>
-              <View style={[styles.dot, { backgroundColor: '#12A870' }]} />
-              <Text style={styles.body} numberOfLines={1}>
-                {Math.round(share * 100)}% on bike lanes and paths
-              </Text>
-            </View>
-          )}
-          {trip.extras === 'ready' && (
-            <View style={styles.row}>
-              <View
-                style={[
-                  styles.dot,
-                  { backgroundColor: trip.closures.length ? Status.danger : Status.ok },
-                ]}
-              />
-              <Text style={styles.body} numberOfLines={2}>
-                {trip.closures.length
-                  ? `${trip.closures.length} closed or under construction near the route${closureNames(trip.closures)}`
-                  : 'No closures mapped on this route'}
-              </Text>
-            </View>
-          )}
-        </>
+        </View>
       )}
 
-      <View style={styles.actions}>
-        <Toggle label="Bike lanes" value={trip.bikeLanes} onChange={(on) => nav.setBikeLanes(on)} />
-        {trip.status === 'ready' && (
-          <>
-            <View style={styles.grow}>
-              <Button title="Demo" variant="secondary" onPress={() => nav.start(true)} />
-            </View>
-            <View style={styles.grow}>
-              <Button title="Start" onPress={() => nav.start(false)} />
-            </View>
-          </>
-        )}
+      {ready && (
+        <View style={styles.actions}>
+          <View style={styles.start}>
+            <Button title="Start" size="large" onPress={() => nav.start(false)} />
+          </View>
+          {/* Rides the route by itself, for showing the app without leaving the room. */}
+          <View style={styles.grow}>
+            <Button title="Preview" size="large" variant="secondary" onPress={() => nav.start(true)} />
+          </View>
+        </View>
+      )}
+      {trip.status === 'error' && destination && (
+        <Button title="Try again" variant="secondary" onPress={() => nav.setDestination(destination)} />
+      )}
+
+      <View style={styles.row}>
+        <Toggle label="Prefer bike lanes" value={trip.bikeLanes} onChange={(on) => nav.setBikeLanes(on)} />
+        <Text style={[styles.credit, styles.grow]}>© OpenStreetMap</Text>
       </View>
-      <Text style={styles.credit}>Map data © OpenStreetMap contributors</Text>
     </View>
   );
 }
@@ -159,53 +119,60 @@ function closureNames(closures: { name: string | null }[]) {
   return names.length ? `: ${names.join(', ')}` : '';
 }
 
-function ParkingLine({
-  state,
-  parking,
-  onPark,
-  onRetry,
-}: {
-  state: 'idle' | 'loading' | 'ready' | 'error';
-  parking: Parking | null;
-  onPark(parking: Parking): void;
-  onRetry(): void;
-}) {
-  if (state === 'loading') {
+/**
+ * At most one line of "heads up" under the trip: a closure on the way, or good bike parking
+ * at the end. Nothing is shown while that information loads, or when there is nothing to say.
+ */
+function Heads({ trip }: { trip: ReturnType<typeof useNav> }) {
+  const { nav, destination, closures } = trip;
+  if (destination?.isParking) {
     return (
       <View style={styles.row}>
-        <ActivityIndicator color="#6B7076" size="small" />
-        <Text style={styles.muted}>Loading streets, parking and closures…</Text>
-      </View>
-    );
-  }
-  if (state === 'error') {
-    return (
-      <View style={styles.row}>
-        <Text style={[styles.muted, styles.grow]}>
-          Couldn&apos;t load streets, parking and closures.
+        <View style={styles.badge}>
+          <Text style={styles.badgeText}>P</Text>
+        </View>
+        <Text style={styles.body} numberOfLines={1}>
+          Bike parking at the end{destination.detail ? ` · ${destination.detail}` : ''}
         </Text>
-        <Button title="Retry" size="small" variant="secondary" onPress={onRetry} />
       </View>
     );
   }
-  if (state !== 'ready') return null;
-  if (!parking) {
-    return <Text style={styles.muted}>No good bike parking mapped near the destination.</Text>;
+  if (trip.extras !== 'ready') return null;
+  if (closures.length > 0) {
+    return (
+      <View style={styles.row}>
+        <View style={[styles.dot, { backgroundColor: Status.danger }]} />
+        <Text style={styles.body} numberOfLines={2}>
+          {closures.length === 1 ? 'A closure' : `${closures.length} closures`} near the route
+          {closureNames(closures)}
+        </Text>
+      </View>
+    );
   }
+  const parking = trip.parking.find((p) => p.good && p.fromDestination < 350);
+  if (!parking) return null;
   return (
     <View style={styles.row}>
       <View style={styles.badge}>
         <Text style={styles.badgeText}>P</Text>
       </View>
-      <View style={styles.grow}>
-        <Text style={styles.body} numberOfLines={1}>
-          Good parking · {formatDistance(parking.fromDestination)} walk
-        </Text>
-        <Text style={styles.muted} numberOfLines={1}>
-          {describeParking(parking)}
-        </Text>
-      </View>
-      <Button title="Park here" size="small" variant="secondary" onPress={() => onPark(parking)} />
+      <Text style={[styles.body, styles.grow]} numberOfLines={1}>
+        Bike parking {formatDistance(parking.fromDestination)} from the end
+      </Text>
+      <Button
+        title="Park there"
+        size="small"
+        variant="secondary"
+        onPress={() =>
+          nav.setDestination({
+            name: 'Bike parking',
+            detail: describeParking(parking),
+            lat: parking.lat,
+            lon: parking.lon,
+            isParking: true,
+          })
+        }
+      />
     </View>
   );
 }
@@ -229,7 +196,7 @@ function Toggle({
       <SymbolView
         name={{ ios: 'bicycle', android: 'pedal_bike', web: 'pedal_bike' }}
         size={16}
-        tintColor={value ? '#111111' : '#6B7076'}
+        tintColor={value ? '#FFFFFF' : '#6B7076'}
       />
       <Text style={[styles.toggleText, value && styles.toggleTextOn]}>{label}</Text>
     </Pressable>
@@ -358,12 +325,11 @@ const styles = StyleSheet.create({
   },
   row: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   grow: { flex: 1 },
-  summary: { flexDirection: 'row', alignItems: 'baseline', gap: 10, minHeight: 40 },
-  close: { alignSelf: 'center' },
-  big: { color: '#111111', fontFamily: Type.light, fontSize: 34, lineHeight: 40, letterSpacing: -0.8 },
+  title: { color: '#111111', fontFamily: Type.semibold, fontSize: 20, lineHeight: 26 },
+  start: { flex: 2 },
   body: { flexShrink: 1, color: '#111111', fontFamily: Type.regular, fontSize: 14, lineHeight: 19 },
-  muted: { color: '#6B7076', fontFamily: Type.regular, fontSize: 13, lineHeight: 18 },
-  credit: { color: '#9A9DA3', fontFamily: Type.regular, fontSize: 9, textAlign: 'center' },
+  muted: { color: '#6B7076', fontFamily: Type.regular, fontSize: 15, lineHeight: 21 },
+  credit: { color: '#9A9DA3', fontFamily: Type.regular, fontSize: 10, textAlign: 'right' },
   error: { color: '#C62F34', fontFamily: Type.regular, fontSize: 14, lineHeight: 19 },
   dot: { width: 8, height: 8, borderRadius: 4, marginHorizontal: 7 },
   badge: {
@@ -380,9 +346,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: 7,
-    height: 52,
+    height: 36,
     paddingHorizontal: 12,
-    borderRadius: 14,
+    borderRadius: 18,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: Hairline,
     backgroundColor: '#E8E7E2',

@@ -3,6 +3,8 @@
  * `GET /state` on the device — see docs/device-api.md.
  */
 
+import type { LatLon } from '@/nav/types';
+
 export type DeviceMode = 'ride' | 'security';
 
 export type CameraId = 'front' | 'rear';
@@ -34,6 +36,8 @@ export type DeviceState = {
   /** 0..100, or null if the device doesn't report it */
   battery: number | null;
   speedKmh: number | null;
+  /** Where the device's own GPS says the bike is, or null without a GPS or a fix */
+  position: LatLon | null;
   /** Cameras fitted to the device */
   cameras: CameraId[];
   detections: Detection[];
@@ -70,6 +74,7 @@ export const EMPTY_STATE: DeviceState = {
   alarm: false,
   battery: null,
   speedKmh: null,
+  position: null,
   cameras: ['front'],
   detections: [],
   events: [],

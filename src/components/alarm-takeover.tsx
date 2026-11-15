@@ -1,6 +1,6 @@
 import { Image } from 'expo-image';
 import { SymbolView } from 'expo-symbols';
-import { useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Modal, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   Easing,
@@ -13,17 +13,22 @@ import Animated, {
 } from 'react-native-reanimated';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { describeAlarmPicture } from '@/agent/agent';
+import { makeClient } from '@/agent/client';
 import { Button } from '@/components/ui/button';
 import { Spacing, Status, Type } from '@/constants/theme';
 import { useDevice } from '@/device/device-provider';
-import { pictureUri } from '@/history/files';
+import { pictureAsBase64, pictureUri } from '@/history/files';
 import { haptic } from '@/lib/haptics';
+import { say } from '@/lib/voice';
 import { useSecurity } from '@/security/security-provider';
+import { useSettings } from '@/settings/settings-provider';
 
 /** Full-screen alert while the device's alarm is sounding, over every tab. */
 export function AlarmTakeover() {
   const { state, silenceAlarm } = useDevice();
-  const { entries } = useSecurity();
+  const { entries, describeEntry } = useSecurity();
+  const { agentEnabled, agentUrl, agentToken } = useSettings();
   const active = state.alarm;
   // What set the alarm off: the newest thing in the log that could have.
   const cause = entries.find(
@@ -31,6 +36,40 @@ export function AlarmTakeover() {
   );
   const fromPhone = cause?.kind === 'siren';
   const picture = fromPhone ? undefined : cause?.pictures[0];
+
+  // The AI agent looks at the picture once and says what it shows. If that fails or is slow,
+  // the screen simply carries on without a description.
+  const asked = useRef(new Set<string>());
+  const [looking, setLooking] = useState(false);
+  const causeId = cause?.id;
+  const pictureFile = picture?.file;
+  const described = Boolean(cause?.description);
+  useEffect(() => {
+    if (!active || !causeId || !pictureFile || described) return;
+    if (!agentEnabled || !agentUrl.trim() || asked.current.has(causeId)) return;
+    asked.current.add(causeId);
+    let current = true;
+    (async () => {
+      setLooking(true);
+      try {
+        const data = await pictureAsBase64(pictureFile);
+        if (!data) return;
+        const text = await describeAlarmPicture(makeClient(agentUrl, agentToken), data);
+        if (!text) return;
+        describeEntry(causeId, text); // kept with the entry, so it also shows in History
+        if (current) say(text, true);
+      } catch {
+        // No description this time; the alarm itself is unaffected.
+      } finally {
+        setLooking(false);
+      }
+    })();
+    return () => {
+      current = false;
+    };
+    // describeEntry is recreated every render; the ids above are what matter.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [active, causeId, pictureFile, described, agentEnabled, agentUrl, agentToken]);
 
   useEffect(() => {
     if (!active) return;
@@ -63,6 +102,14 @@ export function AlarmTakeover() {
                   {picture.camera === 'rear' ? 'Rear camera' : 'Front camera'}
                 </Text>
               </Animated.View>
+            )}
+            {!fromPhone && (cause?.description || looking) && (
+              <View style={styles.seen}>
+                <Text style={styles.seenLabel}>VELO SEES</Text>
+                <Text style={styles.seenText}>
+                  {cause?.description ?? 'Looking at the camera…'}
+                </Text>
+              </View>
             )}
           </View>
           <Button title="Silence alarm" variant="onDanger" size="large" onPress={silenceAlarm} />
@@ -137,6 +184,16 @@ const styles = StyleSheet.create({
     lineHeight: 48,
     letterSpacing: -1,
   },
+  seen: {
+    alignSelf: 'stretch',
+    marginTop: Spacing.three,
+    padding: Spacing.three,
+    gap: 6,
+    borderRadius: 18,
+    backgroundColor: 'rgba(255,255,255,0.16)',
+  },
+  seenLabel: { color: 'rgba(255,255,255,0.8)', fontFamily: Type.semibold, fontSize: 12, letterSpacing: 1.5 },
+  seenText: { color: '#fff', fontFamily: Type.medium, fontSize: 19, lineHeight: 26 },
   body: {
     color: 'rgba(255,255,255,0.9)',
     fontFamily: Type.regular,

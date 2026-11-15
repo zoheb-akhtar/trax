@@ -16,6 +16,7 @@ import { AgentProvider } from '@/agent/agent-provider';
 import { AgentCaption } from '@/components/agent-caption';
 import { AgentSheet } from '@/components/agent-sheet';
 import { AlarmTakeover } from '@/components/alarm-takeover';
+import { CoPilotMoments } from '@/components/co-pilot-moments';
 import { CrashTakeover } from '@/components/crash-takeover';
 import { VoiceAlerts } from '@/components/voice-alerts';
 import AppTabs from '@/components/app-tabs';
@@ -64,6 +65,7 @@ export default function RootLayout() {
                     <AlarmTakeover />
                     <CrashTakeover />
                     <VoiceAlerts />
+                    <CoPilotMoments />
                   </AgentProvider>
                 </RideUiProvider>
               </SecurityProvider>

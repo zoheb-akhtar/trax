@@ -4,6 +4,7 @@ import * as Location from 'expo-location';
 import type { CameraId, DeviceMode, SecurityEvent } from '@/device/types';
 import { deletePictureFolder, savePictureTo } from '@/history/files';
 import { placeName } from '@/nav/api';
+import { distance } from '@/nav/geo';
 import type { LatLon } from '@/nav/types';
 
 export type SecurityKind = 'armed' | 'disarmed' | 'tamper' | 'motion' | 'siren' | 'crash';
@@ -17,12 +18,22 @@ export type SecurityEntry = {
   pictures: { camera: CameraId; file: string }[];
   /** Street or place name, when known */
   place: string | null;
+  /** What the AI agent saw in the picture, in one sentence. Only for alarms. */
+  description?: string;
 };
 
 /** Where the bike was when Velo was armed. */
 export type Parked = LatLon & { ts: number; place: string | null };
 
-export type SecuritySnapshot = { loaded: boolean; entries: SecurityEntry[]; parked: Parked | null };
+/** Where the device's GPS last reported the bike, and when the phone heard it. */
+export type LastSeen = LatLon & { ts: number; place: string | null };
+
+export type SecuritySnapshot = {
+  loaded: boolean;
+  entries: SecurityEntry[];
+  parked: Parked | null;
+  lastSeen: LastSeen | null;
+};
 
 export type SecurityInput = {
   /** False while the device's state is unknown (offline or still connecting). */
@@ -31,7 +42,15 @@ export type SecurityInput = {
   events: SecurityEvent[];
   cameras: CameraId[];
   snapshotUrlFor(camera: CameraId): string | null;
+  /** The device's GPS position, if it reports one */
+  position: LatLon | null;
 };
+
+/** The bike's position is re-saved when it has moved this far, or this much time has passed. */
+const SEEN_MOVE_M = 8;
+const SEEN_EVERY_MS = 15000;
+/** The street name is looked up again once the bike is this far from where it was last named. */
+const RENAME_M = 40;
 
 const STORAGE_KEY = 'velo.security';
 const MAX_ENTRIES = 100;
@@ -43,7 +62,9 @@ const FRESH_MS = 8000;
 
 /** The record of what has happened to the bike, kept on the phone. One instance for the app. */
 export class SecurityLog {
-  private snapshot: SecuritySnapshot = { loaded: false, entries: [], parked: null };
+  private snapshot: SecuritySnapshot = { loaded: false, entries: [], parked: null, lastSeen: null };
+  private namedAt: LatLon | null = null;
+  private naming = false;
   private listeners = new Set<() => void>();
   private seen = new Set<string>();
   private lastMode: DeviceMode | null = null;
@@ -70,12 +91,16 @@ export class SecurityLog {
     }
     const entries = stored.entries ?? [];
     for (const entry of entries) this.seen.add(entry.id);
-    this.set({ loaded: true, entries, parked: stored.parked ?? null }, false);
+    this.set(
+      { loaded: true, entries, parked: stored.parked ?? null, lastSeen: stored.lastSeen ?? null },
+      false,
+    );
   }
 
   /** Call with the device's latest state, as often as it changes. */
   update(input: SecurityInput) {
     if (!this.snapshot.loaded || !input.tracking) return;
+    if (input.position) this.see(input.position);
 
     if (this.lastMode && this.lastMode !== input.mode) {
       if (input.mode === 'security') {
@@ -95,9 +120,55 @@ export class SecurityLog {
     }
   }
 
+  /**
+   * Remembers where the device's GPS says the bike is. Once the bike is out of range this is
+   * the last place it was known to be, which is what "find my bike" shows.
+   */
+  private see(at: LatLon) {
+    const previous = this.snapshot.lastSeen;
+    const now = Date.now();
+    if (previous && distance(previous, at) < SEEN_MOVE_M && now - previous.ts < SEEN_EVERY_MS) {
+      return;
+    }
+    this.set({ lastSeen: { ...at, ts: now, place: previous?.place ?? null } });
+
+    if (this.naming || (this.namedAt && previous?.place && distance(this.namedAt, at) < RENAME_M)) {
+      return;
+    }
+    this.naming = true;
+    placeName(at)
+      .then((place) => {
+        this.namedAt = at;
+        const current = this.snapshot.lastSeen;
+        if (place && current) this.set({ lastSeen: { ...current, place } });
+      })
+      .catch(() => {})
+      .finally(() => {
+        this.naming = false;
+      });
+  }
+
   /** The alarm was set off from the phone. */
   noteSiren() {
     this.add({ id: `siren-${Date.now()}`, ts: Date.now(), kind: 'siren' });
+  }
+
+  /** Records what the AI agent saw in an entry's picture. */
+  describe(id: string, description: string) {
+    this.set({
+      entries: this.snapshot.entries.map((entry) =>
+        entry.id === id ? { ...entry, description } : entry,
+      ),
+    });
+  }
+
+  /**
+   * Forgets every entry and deletes their pictures. Where the bike is parked and was last seen
+   * are kept, and so is the list of events already handled, so old ones don't come back.
+   */
+  clear() {
+    deletePictureFolder('security');
+    this.set({ entries: [] });
   }
 
   delete(id: string) {
@@ -157,8 +228,10 @@ export class SecurityLog {
     this.snapshot = { ...this.snapshot, ...patch };
     this.listeners.forEach((l) => l());
     if (save) {
-      const { entries, parked } = this.snapshot;
-      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ entries, parked })).catch(() => {});
+      const { entries, parked, lastSeen } = this.snapshot;
+      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ entries, parked, lastSeen })).catch(
+        () => {},
+      );
     }
   }
 }

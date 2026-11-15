@@ -33,17 +33,25 @@ Delete the `/debug/tamper` route before using it on the real device.
 ## AI agent proxy (`agent_proxy.py`)
 
 The "Ask Velo" agent in the app talks to Claude through this small server, so the API key
-never goes into the app. It needs only Python 3 (no packages).
+never goes into the app. It also turns your voice into text for the microphone button, using
+the Whisper speech model on this machine (recordings are not sent anywhere else).
 
 ```bash
+python3 -m venv device/.venv                          # once
+device/.venv/bin/pip install -r device/requirements.txt   # once
+
 export ANTHROPIC_API_KEY=...        # your key; stays in this terminal
 export VELO_PROXY_TOKEN=some-word   # optional: stops others on the Wi-Fi using it
-python3 device/agent_proxy.py       # listens on port 8787
+device/.venv/bin/python device/agent_proxy.py   # listens on port 8787
 ```
+
+It should print `API key: configured` and, a few seconds later, `Speech to text: ready`.
+The first run downloads the speech model (about 150 MB). Without the speech package the agent
+still works; the app offers questions to tap instead of listening.
 
 In the app's Device tab, under "AI agent", set the server address: `localhost:8787` in the
 iOS simulator, or the laptop's Wi-Fi address (printed when the proxy starts) on a real phone.
 If you set a token, enter the same one there.
 
-The proxy forwards `POST /v1/messages` only, and logs the status of each request, never the
+The proxy handles `POST /v1/messages` and `POST /v1/transcribe` only, and logs the status of each request, never the
 key or what was said. Each question costs roughly 1 to 2 cents.

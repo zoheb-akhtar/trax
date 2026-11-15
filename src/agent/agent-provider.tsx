@@ -54,6 +54,8 @@ type AgentContextValue = {
   confirming: string | null;
   answer(yes: boolean): void;
   ask(text: string): void;
+  /** Velo speaking up by itself: says a line aloud and notes it in the conversation. */
+  announce(text: string): void;
   reset(): void;
 };
 
@@ -242,10 +244,21 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     } else if (outcome.reason === 'unavailable') {
       setChoosing(true);
     } else if (outcome.reason === 'failed') {
-      add('problem', "I couldn't hear that. Try again.");
+      const message = "I couldn't hear that. Try again.";
+      add('problem', message);
+      say(message, true);
     } else {
-      add('problem', "I didn't catch that. Tap and try again.");
+      const message = "I didn't catch that. Tap and try again.";
+      add('problem', message);
+      say(message, true); // spoken, because while riding nothing is shown
     }
+  };
+
+  const announce = (text: string) => {
+    if (busy.current || ear.current) return; // never talk over a question in progress
+    setTurnFrom(add('velo', text));
+    setActive(true);
+    say(text, true);
   };
 
   const dismiss = () => {
@@ -278,6 +291,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         confirming,
         answer,
         ask,
+        announce,
         reset,
       }}>
       {children}

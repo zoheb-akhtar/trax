@@ -111,6 +111,10 @@ function parseState(json: any): DeviceState {
     alarm: Boolean(json?.alarm),
     battery: typeof json?.battery === 'number' ? json.battery : null,
     speedKmh: typeof json?.speedKmh === 'number' ? json.speedKmh : null,
+    position:
+      typeof json?.position?.lat === 'number' && typeof json?.position?.lon === 'number'
+        ? { lat: json.position.lat, lon: json.position.lon }
+        : null,
     cameras: json?.cameras?.includes?.('rear')
       ? json.cameras.includes('front')
         ? ['front', 'rear']

@@ -4,9 +4,9 @@ import { isCloseVehicle, mergeCyclists, toWorld } from '@/device/geometry';
 import type { CameraId, Connection, Detection, DeviceMode, DeviceState } from '@/device/types';
 import { safetyScore, type Ride } from '@/history/ride-history';
 import { searchPlaces } from '@/nav/api';
-import { formatDistance, formatDuration, formatSpeed } from '@/nav/geo';
+import { distance, formatDistance, formatDuration, formatSpeed } from '@/nav/geo';
 import type { NavSnapshot, NavStore } from '@/nav/nav-store';
-import type { Parked, SecurityEntry } from '@/security/security-log';
+import type { LastSeen, Parked, SecurityEntry } from '@/security/security-log';
 
 /** Everything the agent can read and do, supplied fresh for each tool call. */
 export type AgentWorld = {
@@ -20,7 +20,12 @@ export type AgentWorld = {
   };
   trip: NavSnapshot;
   nav: NavStore;
-  security: { entries: SecurityEntry[]; parked: Parked | null; soundAlarm(): void };
+  security: {
+    entries: SecurityEntry[];
+    parked: Parked | null;
+    lastSeen: LastSeen | null;
+    soundAlarm(): void;
+  };
   rides: Ride[];
   ui: {
     setFullView(on: boolean): void;
@@ -122,7 +127,20 @@ const DEFINITIONS: Tool[] = [
   },
   {
     name: 'find_my_bike',
-    description: 'Makes Velo beep and flash briefly so the owner can find the bike.',
+    description:
+      'Makes Velo beep and flash briefly, to spot the bike when it is nearby. To learn where the bike is, use locate_bike instead.',
+    input_schema: NO_INPUT,
+  },
+  {
+    name: 'locate_bike',
+    description:
+      "Where the bike is, from its own GPS: the street, how far it is from the owner, when it was last heard from, and whether it has moved from where it was parked. Once the bike is out of range this is its last known position, not a live one.",
+    input_schema: NO_INPUT,
+  },
+  {
+    name: 'show_bike_on_map',
+    description:
+      "Opens the Security screen, which shows a map of the bike's last known position with the owner's own position. Use when the owner wants to see where the bike is or go and find it; they will be on foot, so never plan a cycling route to it.",
     input_schema: NO_INPUT,
   },
   {
@@ -221,6 +239,27 @@ function deviceStatus(world: AgentWorld) {
     .join('; ');
 }
 
+function bikeLocation(world: AgentWorld) {
+  const { lastSeen, parked } = world.security;
+  if (!lastSeen) return "The bike's position is not known: Velo has not reported a GPS fix.";
+  const live = world.device.connection === 'connected';
+  const parts = [
+    `${live ? 'The bike is' : 'The bike was last'} ${lastSeen.place ? `near ${lastSeen.place}` : 'at a known position'}`,
+    live ? 'live from its GPS just now' : `last heard from at ${clock(lastSeen.ts)}; it is out of range, so it may have moved since`,
+  ];
+  const owner = world.trip.position;
+  if (owner) {
+    const away = distance(owner, lastSeen);
+    // Under about 25 m, two GPS fixes can't be told apart.
+    parts.push(away < 25 ? 'right by the owner' : `about ${formatDistance(away)} from the owner`);
+  }
+  if (parked) {
+    const moved = distance(parked, lastSeen);
+    parts.push(moved > 30 ? `it has MOVED about ${formatDistance(moved)} from where it was parked` : 'it is where it was parked');
+  }
+  return parts.join('; ');
+}
+
 const EVENT: Record<SecurityEntry['kind'], string> = {
   armed: 'armed',
   disarmed: 'disarmed',
@@ -283,7 +322,7 @@ export async function runTool(name: string, input: unknown, world: AgentWorld): 
     case 'get_security_events': {
       const lines = world.security.entries.slice(0, 12).map((e) => {
         const day = new Date(e.ts).toLocaleDateString([], { weekday: 'short' });
-        return `${day} ${clock(e.ts)}: ${EVENT[e.kind]}${e.place ? ` at ${e.place}` : ''}${e.pictures.length ? ' (picture saved)' : ''}`;
+        return `${day} ${clock(e.ts)}: ${EVENT[e.kind]}${e.place ? ` at ${e.place}` : ''}${e.pictures.length ? ' (picture saved)' : ''}${e.description ? `. The camera showed: ${e.description}` : ''}`;
       });
       return ok('Checked security history', lines.length ? lines.join('\n') : 'No security events recorded.');
     }
@@ -389,6 +428,16 @@ export async function runTool(name: string, input: unknown, world: AgentWorld): 
       if (device.connection !== 'connected') return failed('Find my bike', 'Velo is not connected, so it cannot be made to beep.');
       device.chirp();
       return ok('Made Velo beep', 'Velo was told to beep and flash.');
+
+    case 'locate_bike':
+      return ok('Located the bike', bikeLocation(world));
+
+    case 'show_bike_on_map':
+      if (!world.security.lastSeen) {
+        return failed('Show the bike on the map', "The bike's position is not known: Velo has not reported a GPS fix.");
+      }
+      world.ui.openScreen('security');
+      return ok('Showing the bike on the map', `The map is showing. ${bikeLocation(world)}`);
 
     case 'show_camera': {
       const camera: CameraId = args.camera === 'front' ? 'front' : 'rear';

@@ -6,6 +6,8 @@ import { SecurityLog, type SecuritySnapshot } from './security-log';
 
 type SecurityContextValue = SecuritySnapshot & {
   deleteEntry(id: string): void;
+  clearEntries(): void;
+  describeEntry(id: string, description: string): void;
   /** Sets Velo's alarm off from the phone, and notes it in the log. */
   soundAlarm(): void;
 };
@@ -29,6 +31,7 @@ export function SecurityProvider({ children }: { children: ReactNode }) {
       events: state.events,
       cameras: state.cameras,
       snapshotUrlFor,
+      position: state.position,
     });
   });
 
@@ -37,6 +40,8 @@ export function SecurityProvider({ children }: { children: ReactNode }) {
       value={{
         ...snapshot,
         deleteEntry: (id) => log.delete(id),
+        clearEntries: () => log.clear(),
+        describeEntry: (id, description) => log.describe(id, description),
         soundAlarm: () => {
           log.noteSiren();
           soundAlarm();

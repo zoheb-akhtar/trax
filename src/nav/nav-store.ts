@@ -1,3 +1,4 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Location from 'expo-location';
 
 import { haptic } from '@/lib/haptics';
@@ -217,22 +218,41 @@ export class NavStore {
     this.loadExtras(route, controller);
   }
 
-  /** Streets, parking and closures first; then buildings, which are only decoration. */
+  /**
+   * Streets, parking and closures first; then buildings, which are only decoration.
+   *
+   * The free map service is often slow or busy, so this shows the copy saved on the phone
+   * from the last time this trip was planned, and tries the service a few times by itself.
+   */
   private async loadExtras(route: Route, controller: AbortController) {
     this.loadedFor = route;
-    try {
-      const found = await fetchAlongRoute(route, controller.signal);
+    const key = mapKey(route);
+
+    const saved = await readSavedMap(key);
+    if (controller.signal.aborted) return;
+    if (saved) this.set({ ...saved, extras: 'ready' });
+
+    for (let attempt = 0; attempt < MAP_ATTEMPTS; attempt++) {
+      if (attempt > 0) await new Promise((resolve) => setTimeout(resolve, MAP_RETRY_MS));
       if (controller.signal.aborted) return;
-      this.set({ ...found, extras: 'ready' });
-    } catch {
-      if (controller.signal.aborted) return;
-      this.set({ extras: 'error' });
-    }
-    try {
-      const scenery = await fetchScenery(route, controller.signal);
-      if (!controller.signal.aborted) this.set(scenery);
-    } catch {
-      // The ride view works without buildings.
+      try {
+        const found = await fetchAlongRoute(route, controller.signal);
+        if (controller.signal.aborted) return;
+        this.set({ ...found, extras: 'ready' });
+        let scenery: Awaited<ReturnType<typeof fetchScenery>> | null = null;
+        try {
+          scenery = await fetchScenery(route, controller.signal);
+          if (!controller.signal.aborted) this.set(scenery);
+        } catch {
+          // The ride view works without buildings.
+        }
+        saveMap(key, { ...found, ...(scenery ?? {}) });
+        return;
+      } catch {
+        if (controller.signal.aborted) return;
+        // Try again shortly; meanwhile the saved copy (if any) stays on screen.
+        if (!saved) this.set({ extras: attempt < MAP_ATTEMPTS - 1 ? 'loading' : 'error' });
+      }
     }
   }
 
@@ -419,4 +439,42 @@ function covers(loaded: Route | null, route: Route) {
   return route.points.every(
     (p) => p.lat >= south && p.lat <= north && p.lon >= west && p.lon <= east,
   );
+}
+
+// ---- Map data saved on the phone -------------------------------------------------------
+
+/** How many times to ask the map service before giving up, and how long between tries. */
+const MAP_ATTEMPTS = 4;
+const MAP_RETRY_MS = 6000;
+const MAP_INDEX_KEY = 'velo.maps';
+/** Trips whose map data is kept; the oldest is dropped beyond this. */
+const MAPS_KEPT = 6;
+
+type SavedMap = Partial<Pick<NavSnapshot, 'roads' | 'parking' | 'closures' | 'buildings' | 'areas'>>;
+
+/** Identifies a trip by where it starts and ends, to about 100 metres. */
+function mapKey(route: Route) {
+  const round = (p: { lat: number; lon: number }) => `${p.lat.toFixed(3)},${p.lon.toFixed(3)}`;
+  return `velo.map.${round(route.points[0])}-${round(route.points[route.points.length - 1])}`;
+}
+
+async function readSavedMap(key: string): Promise<SavedMap | null> {
+  try {
+    const raw = await AsyncStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as SavedMap) : null;
+  } catch {
+    return null;
+  }
+}
+
+async function saveMap(key: string, map: SavedMap) {
+  try {
+    await AsyncStorage.setItem(key, JSON.stringify(map));
+    const raw = await AsyncStorage.getItem(MAP_INDEX_KEY);
+    const keys: string[] = [key, ...(raw ? (JSON.parse(raw) as string[]) : []).filter((k) => k !== key)];
+    await Promise.all(keys.slice(MAPS_KEPT).map((old) => AsyncStorage.removeItem(old)));
+    await AsyncStorage.setItem(MAP_INDEX_KEY, JSON.stringify(keys.slice(0, MAPS_KEPT)));
+  } catch {
+    // Saving is a convenience; the map on screen is unaffected.
+  }
 }

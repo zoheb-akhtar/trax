@@ -3,7 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { isCloseVehicle, toWorld } from '@/device/geometry';
 import type { CameraId, Detection, DeviceMode } from '@/device/types';
 
-import { deleteRidePictures, savePicture } from './files';
+import { deletePictureFolder, deleteRidePictures, savePicture } from './files';
 
 export type RideMoment = {
   id: string;
@@ -188,6 +188,15 @@ export class RideHistory {
     if (this.active?.id === id) this.active = null;
     this.finished = this.finished.filter((ride) => ride.id !== id);
     deleteRidePictures(id);
+    this.publish();
+    this.save();
+  }
+
+  /** Forgets every ride and deletes their pictures. A ride in progress starts again from zero. */
+  clear() {
+    this.active = null;
+    this.finished = [];
+    deletePictureFolder('rides');
     this.publish();
     this.save();
   }

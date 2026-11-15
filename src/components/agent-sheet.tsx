@@ -72,7 +72,7 @@ export function AgentSheet() {
                 <Text style={styles.introTitle}>Velo can see what the bike sees and run the app for you.</Text>
                 <Text style={styles.introBody}>
                   It asks before disarming or sounding the alarm, and only looks through a camera
-                  when you ask it to.
+                  when you ask it to or when the alarm goes off.
                 </Text>
                 {suggestions.map((text) => (
                   <Pressable

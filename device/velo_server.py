@@ -65,6 +65,10 @@ def to_box(label: str, x: float, z: float):
     return camera, [cx - w / 2, cy - h / 2, w, h]
 
 
+# REPLACE: the real device reports its GPS module's fix here. This is 300 Massachusetts Ave, Boston.
+START_POSITION = (42.3430, -71.0858)
+
+
 class Device:
     """Everything the app can see or change. One instance, shared by all threads."""
 
@@ -74,6 +78,8 @@ class Device:
         self.alarm = False
         self.battery = 82.0
         self.speed_kmh = 0.0
+        # Where the "bike" is. While the alarm sounds it drifts away, as if being carried off.
+        self.lat, self.lon = START_POSITION
         self.events: list[dict] = []
         self.detections: list[dict] = []
         self.started = time.time()
@@ -150,6 +156,9 @@ class Device:
             self.mode = mode
             if mode == "ride":
                 self.alarm = False
+            # Arming or disarming means the owner is with the bike: the pretend theft is over,
+            # so the bike is back where it started.
+            self.lat, self.lon = START_POSITION
         self.arm(mode == "security")
 
     def set_alarm(self, active: bool) -> None:
@@ -165,6 +174,7 @@ class Device:
                 "alarm": self.alarm,
                 "battery": round(self.battery, 1),
                 "speedKmh": round(self.speed_kmh, 1),
+                "position": {"lat": round(self.lat, 6), "lon": round(self.lon, 6)},
                 "cameras": ["front", "rear"],
                 "detections": list(self.detections),
                 "events": list(self.events),
@@ -181,6 +191,10 @@ class Device:
                 self.detections = detections
                 self.speed_kmh = 22 + math.sin(elapsed / 3) * 4 if riding else 0.0
                 self.battery = max(5.0, 82 - elapsed / 120)
+                if self.alarm and self.mode == "security":
+                    # About 1.5 m/s to the north-east: someone walking off with the bike.
+                    self.lat += 1.0e-5 * dt
+                    self.lon += 1.0e-5 * dt
             time.sleep(dt)
 
 

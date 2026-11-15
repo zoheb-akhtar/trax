@@ -1,5 +1,11 @@
-import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
-import { StyleSheet, View } from 'react-native';
+import {
+  Fragment,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
+import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, {
   Circle,
   Defs,
@@ -752,6 +758,7 @@ function MapGround({
   width,
   dashOffset,
   marks,
+  looking,
 }: {
   ground: Ground;
   pose: Pose;
@@ -759,6 +766,8 @@ function MapGround({
   width: number;
   dashOffset: number;
   marks?: SceneMarks;
+  /** True while the view has been dragged away from the bike */
+  looking: boolean;
 }) {
   const minor = ribbons(ground.roads.minor, pose, STREET.minor.half, project);
   const foot = ribbons(ground.roads.foot, pose, STREET.foot.half, project);
@@ -768,7 +777,8 @@ function MapGround({
 
   // Off the route with no street under the rider: put the plain road beneath, so the rider is
   // never floating on empty ground.
-  const stranded = !hasRoadUnder(ground, pose);
+  // Not while looking around, though: that road belongs under the bike, not under the view.
+  const stranded = !looking && !hasRoadUnder(ground, pose);
 
   return (
     <>
@@ -1053,14 +1063,32 @@ function Bike({ project }: { project: Projector }) {
 
 // ---- Animation loop -------------------------------------------------------------
 
-type Frame = { objects: SceneObject[]; dashOffset: number; pose: Pose | null };
+type Frame = {
+  objects: SceneObject[];
+  dashOffset: number;
+  pose: Pose | null;
+  /** True while the view has been dragged away from the bike */
+  looking: boolean;
+};
+
+/**
+ * How far the view has been dragged away from the bike, to look around the map.
+ * `east`/`north` are metres on the ground; `turn` is degrees. All zero means "following".
+ */
+type Look = { east: number; north: number; turn: number; touching: boolean; touchedAt: number };
+
+/** The view drifts back to the bike this long after the last touch. */
+const LOOK_HOLD_S = 8;
+/** Metres of map per point of finger travel. */
+const PAN_M_PER_PT = 0.14;
 
 /** Steps the scene on every display frame and returns what to draw. */
-function useSceneFrame(props: Props): Frame {
+function useSceneFrame(props: Props, lookAround: LookAround): Frame {
   const [frame, setFrame] = useState<Frame>({
     objects: [],
     dashOffset: 0,
     pose: null,
+    looking: false,
   });
   const latest = useRef(props);
   useEffect(() => {
@@ -1099,22 +1127,116 @@ function useSceneFrame(props: Props): Frame {
         pose = null;
       }
 
+      // Looking around: the view may have been dragged away from the bike.
+      const seen = lookAround.view(pose, dt);
+
       setFrame({
         objects: smoother.step(detections, now, dt),
         dashOffset,
-        pose,
+        pose: seen.pose,
+        looking: seen.looking,
       });
       handle = requestAnimationFrame(tick);
     });
     return () => cancelAnimationFrame(handle);
-  }, []);
+  }, [lookAround]);
 
   return frame;
 }
 
+/**
+ * Lets the rider drag the map to look around: one finger moves it, two fingers twist it.
+ * It holds how far the view is from the bike, and eases back once left alone.
+ */
+class LookAround {
+  private away: Look = { east: 0, north: 0, turn: 0, touching: false, touchedAt: 0 };
+  private heading = 0;
+  private enabled = false;
+  private last = { x: 0, y: 0, angle: null as number | null };
+
+  /** Dragging only makes sense once there is a real map under the bike. */
+  setEnabled(on: boolean) {
+    this.enabled = on;
+  }
+
+  recentre() {
+    this.away.touching = false;
+    this.away.touchedAt = 0; // `view` eases back from here
+  }
+
+  /** The pose to draw from, given where the bike is. Call once per frame. */
+  view(pose: Pose | null, dt: number): { pose: Pose | null; looking: boolean } {
+    const away = this.away;
+    if (!pose) {
+      away.east = away.north = away.turn = 0;
+      return { pose: null, looking: false };
+    }
+    if (!away.touching && Date.now() / 1000 - away.touchedAt > LOOK_HOLD_S) {
+      const keep = Math.exp(-dt * 4);
+      away.east *= keep;
+      away.north *= keep;
+      away.turn *= keep;
+      if (Math.hypot(away.east, away.north) < 0.3 && Math.abs(away.turn) < 0.5) {
+        away.east = away.north = away.turn = 0;
+      }
+    }
+    this.heading = pose.heading + away.turn;
+    return {
+      pose: { east: pose.east + away.east, north: pose.north + away.north, heading: this.heading },
+      looking: away.east !== 0 || away.north !== 0 || away.turn !== 0,
+    };
+  }
+
+  private letGo = () => {
+    this.away.touching = false;
+    this.away.touchedAt = Date.now() / 1000;
+  };
+
+  readonly handlers = PanResponder.create({
+    onMoveShouldSetPanResponder: (_, g) => this.enabled && Math.abs(g.dx) + Math.abs(g.dy) > 6,
+    onPanResponderGrant: (event, g) => {
+      this.last = { x: g.dx, y: g.dy, angle: twist(event.nativeEvent.touches) };
+      this.away.touching = true;
+    },
+    onPanResponderMove: (event, g) => {
+      const { away, last } = this;
+      const angle = twist(event.nativeEvent.touches);
+      if (angle !== null && last.angle !== null) {
+        away.turn -= ((angle - last.angle + 540) % 360) - 180;
+      } else if (angle === null) {
+        // Finger moves right: the map follows it, so the view moves left. Finger moves
+        // down: the map comes towards you, so the view moves forward.
+        const right = -(g.dx - last.x) * PAN_M_PER_PT;
+        const forward = (g.dy - last.y) * PAN_M_PER_PT;
+        const h = (this.heading * Math.PI) / 180;
+        away.east += Math.cos(h) * right + Math.sin(h) * forward;
+        away.north += -Math.sin(h) * right + Math.cos(h) * forward;
+      }
+      this.last = { x: g.dx, y: g.dy, angle };
+    },
+    onPanResponderRelease: this.letGo,
+    onPanResponderTerminate: this.letGo,
+  }).panHandlers;
+}
+
+/** The angle of the line between two fingers, in degrees; null with fewer than two. */
+function twist(touches: readonly { pageX: number; pageY: number }[]) {
+  if (touches.length < 2) return null;
+  return (
+    (Math.atan2(touches[1].pageY - touches[0].pageY, touches[1].pageX - touches[0].pageX) * 180) /
+    Math.PI
+  );
+}
+
 export function ProximityScene(props: Props) {
   const [size, setSize] = useState({ width: 0, height: 0 });
-  const frame = useSceneFrame(props);
+  const [lookAround] = useState(() => new LookAround());
+  const frame = useSceneFrame(props, lookAround);
+  const hasGround = Boolean(props.ground);
+  useEffect(() => {
+    lookAround.setEnabled(hasGround);
+  }, [lookAround, hasGround]);
+
   const project = makeProjector(size.width, size.height);
 
   // Painter's order: far things first, so nearer ones cover them. The bike sits at z = 0.
@@ -1127,6 +1249,7 @@ export function ProximityScene(props: Props) {
       style={styles.container}
       onLayout={(e) => setSize(e.nativeEvent.layout)}
       accessibilityLabel="Estimated positions of nearby objects"
+      {...lookAround.handlers}
     >
       {size.width > 0 && (
         <Svg width={size.width} height={size.height}>
@@ -1138,6 +1261,7 @@ export function ProximityScene(props: Props) {
               width={size.width}
               dashOffset={frame.dashOffset}
               marks={props.marks}
+              looking={frame.looking}
             />
           ) : (
             <Road project={project} dashOffset={frame.dashOffset} width={size.width} />
@@ -1151,14 +1275,24 @@ export function ProximityScene(props: Props) {
           {props.ground && frame.pose && props.marks && (
             <Pins ground={props.ground} pose={frame.pose} project={project} marks={props.marks} />
           )}
-          {aheadOfBike.map((o) => (
-            <SceneObjectShape key={o.id} object={o} project={project} />
-          ))}
-          <Bike project={project} />
-          {behindTheBike.map((o) => (
-            <SceneObjectShape key={o.id} object={o} project={project} />
-          ))}
+          {/* The bike and what it detects belong to where the bike is, not where you are looking. */}
+          {!frame.looking && (
+            <>
+              {aheadOfBike.map((o) => (
+                <SceneObjectShape key={o.id} object={o} project={project} />
+              ))}
+              <Bike project={project} />
+              {behindTheBike.map((o) => (
+                <SceneObjectShape key={o.id} object={o} project={project} />
+              ))}
+            </>
+          )}
         </Svg>
+      )}
+      {frame.looking && (
+        <Pressable accessibilityRole="button" onPress={() => lookAround.recentre()} hitSlop={10} style={styles.recentre}>
+          <Text style={styles.recentreText}>Back to my bike</Text>
+        </Pressable>
       )}
     </View>
   );
@@ -1166,4 +1300,19 @@ export function ProximityScene(props: Props) {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: GROUND },
+  recentre: {
+    position: 'absolute',
+    alignSelf: 'center',
+    top: '34%',
+    height: 40,
+    paddingHorizontal: 18,
+    borderRadius: 20,
+    justifyContent: 'center',
+    backgroundColor: '#111111',
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+  },
+  recentreText: { color: '#FFFFFF', fontFamily: Type.semibold, fontSize: 14 },
 });

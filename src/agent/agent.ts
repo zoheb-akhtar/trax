@@ -107,6 +107,29 @@ export async function describeAlarmPicture(client: Anthropic, jpegBase64: string
 }
 
 /**
+ * One spoken sentence written from a list of facts, for the moments when Velo speaks up by
+ * itself (a route briefing, a ride debrief). Returns null if nothing usable came back.
+ */
+export async function oneLine(client: Anthropic, instructions: string, facts: string) {
+  const response = await client.beta.messages.create({
+    model: MODEL,
+    max_tokens: MAX_TOKENS,
+    betas: BETAS,
+    fallbacks: 'default',
+    output_config: { effort: EFFORT },
+    system: instructions,
+    messages: [{ role: 'user', content: facts }],
+  });
+  if (response.stop_reason === 'refusal') return null;
+  const text = response.content
+    .filter((block): block is Anthropic.Beta.BetaTextBlock => block.type === 'text')
+    .map((block) => block.text)
+    .join(' ')
+    .trim();
+  return text || null;
+}
+
+/**
  * True when the service rejected the request itself. With an earlier conversation attached,
  * the usual cause is that conversation no longer being valid (for example the tool list changed
  * after an app update), so the caller starts a fresh one and asks again.

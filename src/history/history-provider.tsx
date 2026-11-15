@@ -5,7 +5,10 @@ import { useNav } from '@/nav/nav-provider';
 
 import { RideHistory, type RideHistorySnapshot } from './ride-history';
 
-type HistoryContextValue = RideHistorySnapshot & { deleteRide(id: string): void };
+type HistoryContextValue = RideHistorySnapshot & {
+  deleteRide(id: string): void;
+  clearRides(): void;
+};
 
 const HistoryContext = createContext<HistoryContextValue | null>(null);
 
@@ -34,7 +37,12 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
   });
 
   return (
-    <HistoryContext value={{ ...snapshot, deleteRide: (id) => history.delete(id) }}>
+    <HistoryContext
+      value={{
+        ...snapshot,
+        deleteRide: (id) => history.delete(id),
+        clearRides: () => history.clear(),
+      }}>
       {children}
     </HistoryContext>
   );

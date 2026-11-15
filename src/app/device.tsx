@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
+import { Alert, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 
 import { Screen } from '@/components/screen';
 import { ScreenHeader } from '@/components/screen-header';
@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Hairline, Spacing, Type } from '@/constants/theme';
 import { useDevice } from '@/device/device-provider';
+import { useRideHistory } from '@/history/history-provider';
+import { useSecurity } from '@/security/security-provider';
 import { normalizeHost } from '@/device/http-source';
 import { useTheme } from '@/hooks/use-theme';
 import { useSettings } from '@/settings/settings-provider';
@@ -17,6 +19,24 @@ export default function DeviceScreen() {
   const { settings, updateSettings, state, connection, simulateTamper, simulateCrash } =
     useDevice();
   const prefs = useSettings();
+  const { rides, clearRides } = useRideHistory();
+  const { entries, clearEntries } = useSecurity();
+  const clearHistory = () =>
+    Alert.alert(
+      'Clear all history?',
+      `This deletes ${rides.length} rides and ${entries.length} security events from this phone, with their pictures. It can't be undone.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: () => {
+            clearRides();
+            clearEntries();
+          },
+        },
+      ],
+    );
   const [host, setHost] = useState(settings.host);
   const usingDevice = settings.source === 'device';
 
@@ -161,6 +181,13 @@ export default function DeviceScreen() {
             )}
           </Card>
         )}
+        <Card>
+          <ThemedText type="label">History</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            {rides.length} rides and {entries.length} security events are saved on this phone.
+          </ThemedText>
+          <Button title="Clear all history" variant="secondary" onPress={clearHistory} />
+        </Card>
       </ScrollView>
     </Screen>
   );

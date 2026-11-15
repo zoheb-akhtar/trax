@@ -14,7 +14,8 @@ const WHILE_PARKED = ['What happened while I was away?', 'What can the rear came
 /**
  * What the AI agent heard, did and said, as a small card over the top of whatever screen
  * is showing. It appears when the owner talks to Velo and leaves by itself afterwards,
- * so talking to Velo never takes over the screen.
+ * so talking to Velo never takes over the screen. During a ride it shrinks to a small
+ * "Listening" marker and the answer is only spoken, so the map stays clear.
  */
 export function AgentCaption() {
   const insets = useSafeAreaInsets();
@@ -39,6 +40,33 @@ export function AgentCaption() {
   const question = current.find((line) => line.kind === 'you')?.text;
   const reply = current.findLast((line) => line.kind === 'velo' || line.kind === 'problem');
   const done = current.filter((line) => line.kind === 'did');
+
+  // While riding, nothing may cover the map: just a small "Listening" marker, and the answer
+  // is spoken. The card only appears for something that needs a tap.
+  const needsTap = Boolean(confirming) || (choosing && !question);
+  if (state.mode === 'ride' && !needsTap) {
+    if (!listening && !thinking) return null;
+    return (
+      <Animated.View
+        entering={FadeInUp.duration(150)}
+        exiting={FadeOutUp.duration(150)}
+        pointerEvents="none"
+        style={[styles.pill, { top: insets.top + 68 }]}>
+        {thinking ? (
+          <ActivityIndicator size="small" color="#6B7076" />
+        ) : (
+          <SymbolView
+            name={{ ios: 'waveform', android: 'graphic_eq', web: 'graphic_eq' }}
+            size={16}
+            tintColor={Status.accent}
+          />
+        )}
+        <Text style={styles.pillText}>
+          {thinking ? 'Thinking' : transcribing ? 'Got it' : 'Listening'}
+        </Text>
+      </Animated.View>
+    );
+  }
 
   return (
     <Animated.View
@@ -163,6 +191,25 @@ const styles = StyleSheet.create({
   confirm: { gap: Spacing.two },
   buttons: { flexDirection: 'row', gap: Spacing.two, marginTop: 4 },
   close: { position: 'absolute', top: 14, right: 14 },
+  pill: {
+    position: 'absolute',
+    right: Spacing.three,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    height: 36,
+    paddingHorizontal: 14,
+    borderRadius: 18,
+    backgroundColor: '#FFFFFF',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: Hairline,
+    shadowColor: '#000',
+    shadowOpacity: 0.12,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
+    elevation: 6,
+  },
+  pillText: { fontFamily: Type.medium, fontSize: 14, color: '#111111' },
   choices: { gap: Spacing.two },
   choice: {
     minHeight: 52,
