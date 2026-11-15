@@ -1,9 +1,28 @@
 import { isCloseVehicle, toWorld } from './geometry';
 import type { Detection } from './types';
 
-/** How long an object keeps gliding on its last heading after the cameras lose it. */
-const COAST_SECONDS = 1.3;
+/** A track with no fresh detection for this long counts as lost. */
 const STALE_AFTER = 0.45;
+/** How long an object that is simply lost (not beside the bike) takes to fade out. */
+const FADE_SECONDS = 1.3;
+
+/**
+ * The cameras look forwards and backwards, so nothing beside the bike is seen. A vehicle
+ * or cyclist that vanishes inside this box (metres) was last seen about to enter that gap,
+ * so it is held as "alongside" instead of fading away.
+ */
+const SIDE_ZONE_AHEAD_M = 6;
+const SIDE_ZONE_BEHIND_M = 9;
+const SIDE_ZONE_ACROSS_M = 6;
+/** A held object is given up on after this long, even if it seems to be keeping pace. */
+const MAX_HOLD_SECONDS = 6;
+/** Slower than this relative to the bike (m/s), it is treated as keeping pace alongside. */
+const PACING_MPS = 0.6;
+const MAX_HOLD_SPEED_MPS = 12;
+/** A newly seen object this close to a held one of the same kind is taken to be the same one. */
+const REJOIN_M = 7;
+/** A held object is drawn like any other, so it doesn't seem to vanish. */
+const HELD_ALPHA = 1;
 
 type Track = {
   label: string;
@@ -18,6 +37,8 @@ type Track = {
   vz: number;
   lastSeen: number;
   alpha: number;
+  /** When it was lost into the gap beside the bike; null while seen or merely fading */
+  heldSince: number | null;
 };
 
 export type SceneObject = {
@@ -28,12 +49,15 @@ export type SceneObject = {
   z: number;
   /** 0..1, for fading in and out */
   alpha: number;
+  /** True while it is out of the cameras' sight beside the bike, and its position is a guess */
+  held: boolean;
 };
 
 /**
  * Turns the device's detections, which arrive a few times a second and jump
  * around, into smoothly moving objects for the 3D view. Objects glide between
- * updates and coast briefly when the cameras lose them (e.g. alongside the bike).
+ * updates, and one that disappears into the gap beside the bike is carried
+ * through it at the speed it was closing.
  */
 export class TrackSmoother {
   private tracks = new Map<number, Track>();
@@ -55,23 +79,79 @@ export class TrackSmoother {
         t.x += (t.tx + t.vx * age - t.x) * ease;
         t.z += (t.tz + t.vz * age - t.z) * ease;
         t.alpha = Math.min(1, t.alpha + dt * 4);
+        t.heldSince = null;
       } else {
-        t.x += t.vx * dt;
-        t.z += t.vz * dt;
-        t.alpha -= dt / COAST_SECONDS;
-        if (t.alpha <= 0) {
-          this.tracks.delete(id);
-          continue;
+        if (t.heldSince === null && this.enteredSideGap(t)) t.heldSince = now;
+        const holding = t.heldSince !== null && this.stillAlongside(t, now);
+        if (holding) {
+          // Carry it through the gap at the speed it was closing; keep pace if it was barely moving.
+          const speed = Math.abs(t.vz) < PACING_MPS ? 0 : clamp(t.vz, MAX_HOLD_SPEED_MPS);
+          t.z += speed * dt;
+          t.alpha += (HELD_ALPHA - t.alpha) * (1 - Math.exp(-dt * 6));
+        } else {
+          t.x += t.vx * dt;
+          t.z += t.vz * dt;
+          t.alpha -= dt / FADE_SECONDS;
+          if (t.alpha <= 0) {
+            this.tracks.delete(id);
+            continue;
+          }
         }
+        out.push({
+          id,
+          label: t.label,
+          close: t.close,
+          x: t.x,
+          z: t.z,
+          alpha: t.alpha,
+          held: holding,
+        });
+        continue;
       }
-      out.push({ id, label: t.label, close: t.close, x: t.x, z: t.z, alpha: t.alpha });
+      out.push({ id, label: t.label, close: t.close, x: t.x, z: t.z, alpha: t.alpha, held: false });
     }
     return out;
   }
 
+  /** Whether a lost track was last seen where the cameras' view gives way to the side gap. */
+  private enteredSideGap(t: Track) {
+    return (
+      t.label !== 'person' &&
+      Math.abs(t.x) < SIDE_ZONE_ACROSS_M &&
+      t.z < SIDE_ZONE_BEHIND_M &&
+      t.z > -SIDE_ZONE_AHEAD_M
+    );
+  }
+
+  private stillAlongside(t: Track, now: number) {
+    return (
+      now - (t.heldSince ?? now) < MAX_HOLD_SECONDS &&
+      t.z < SIDE_ZONE_BEHIND_M + 1 &&
+      t.z > -SIDE_ZONE_AHEAD_M
+    );
+  }
+
   private ingest(d: Detection, now: number) {
     const p = toWorld(d);
-    const existing = this.tracks.get(d.id);
+    let existing = this.tracks.get(d.id);
+
+    // Something appearing where a held object should be coming out is that same object,
+    // even if the device has given it a new id: carry on from where it was drawn.
+    if (!existing) {
+      for (const [id, held] of this.tracks) {
+        if (
+          held.heldSince !== null &&
+          held.label === d.label &&
+          Math.hypot(held.x - p.x, held.z - p.z) < REJOIN_M
+        ) {
+          this.tracks.delete(id);
+          this.tracks.set(d.id, held);
+          existing = held;
+          break;
+        }
+      }
+    }
+
     if (!existing) {
       this.tracks.set(d.id, {
         label: d.label,
@@ -84,16 +164,26 @@ export class TrackSmoother {
         vz: 0,
         lastSeen: now,
         alpha: 0,
+        heldSince: null,
       });
       return;
     }
     const elapsed = Math.max(now - existing.lastSeen, 0.03);
-    existing.vx += ((p.x - existing.tx) / elapsed - existing.vx) * 0.5;
-    existing.vz += ((p.z - existing.tz) / elapsed - existing.vz) * 0.5;
+    // After a spell out of sight the old speed estimate is stale, so don't blend with it.
+    const blend = existing.heldSince !== null || elapsed > 1 ? 0 : 0.5;
+    if (blend > 0) {
+      existing.vx += ((p.x - existing.tx) / elapsed - existing.vx) * blend;
+      existing.vz += ((p.z - existing.tz) / elapsed - existing.vz) * blend;
+    }
     existing.tx = p.x;
     existing.tz = p.z;
     existing.lastSeen = now;
     existing.label = d.label;
     existing.close = isCloseVehicle(d);
+    existing.heldSince = null;
   }
+}
+
+function clamp(value: number, limit: number) {
+  return Math.min(Math.max(value, -limit), limit);
 }

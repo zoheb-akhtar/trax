@@ -3,12 +3,12 @@ import { useEffect, useRef, useState } from 'react';
 import { isCloseVehicle, isNearCyclist, toWorld } from './geometry';
 import type { CameraId, Detection } from './types';
 
+import { useRideUi } from '@/ride-ui/ride-ui-provider';
+
 /** Behind is the rider's blind spot, so that is the view shown when nothing needs attention. */
 const DEFAULT_CAMERA: CameraId = 'rear';
 /** After changing camera, stay on it at least this long so the picture doesn't flicker. */
 const HOLD_MS = 3000;
-/** A camera chosen by hand stays this long, then the choice returns to automatic. */
-const PIN_MS = 20000;
 
 /**
  * The camera that sees whatever most needs attention: the nearest close
@@ -29,7 +29,8 @@ export function cameraToWatch(detections: Detection[]): CameraId | null {
  */
 export function useAutoCamera(cameras: CameraId[], detections: Detection[]) {
   const [shown, setShown] = useState<CameraId>(DEFAULT_CAMERA);
-  const [pinned, setPinned] = useState<CameraId | null>(null);
+  // The pinned camera lives above the screen so the AI agent can set it too.
+  const { pinnedCamera: pinned, pinCamera } = useRideUi();
   const lastSwitch = useRef(0);
 
   const target = pinned ?? cameraToWatch(detections) ?? DEFAULT_CAMERA;
@@ -45,16 +46,10 @@ export function useAutoCamera(cameras: CameraId[], detections: Detection[]) {
     return () => clearTimeout(timer);
   }, [target, shown, pinned]);
 
-  useEffect(() => {
-    if (!pinned) return;
-    const timer = setTimeout(() => setPinned(null), PIN_MS);
-    return () => clearTimeout(timer);
-  }, [pinned]);
-
   return {
     /** The camera to show. Falls back to whichever camera the device has. */
     camera: cameras.includes(shown) ? shown : cameras[0],
     automatic: pinned === null,
-    pin: setPinned,
+    pin: pinCamera,
   };
 }

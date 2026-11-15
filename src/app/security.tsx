@@ -20,7 +20,7 @@ const RECENT = 5;
 const CAMERA_LABEL: Record<CameraId, string> = { front: 'Front', rear: 'Rear' };
 
 export default function SecurityScreen() {
-  const { state, connection, setMode, streamUrlFor } = useDevice();
+  const { state, connection, setMode, streamUrlFor, chirp } = useDevice();
   const { entries, parked, soundAlarm, deleteEntry } = useSecurity();
   const { position } = useNav();
   const [viewing, setViewing] = useState(false);
@@ -95,6 +95,7 @@ export default function SecurityScreen() {
             variant="secondary"
             onPress={() => setViewing(!viewing)}
           />
+          <Button title="Find my bike" variant="secondary" onPress={chirp} />
           <Button title="Sound alarm" variant="danger" onPress={soundAlarm} />
         </Card>
 

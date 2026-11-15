@@ -30,6 +30,8 @@ type DeviceContextValue = DeviceSnapshot & {
   soundAlarm(): void;
   /** Only available when simulating */
   simulateTamper: (() => void) | null;
+  simulateCrash: (() => void) | null;
+  chirp(): void;
 };
 
 const STORAGE_KEY = 'velo.device-settings';
@@ -106,6 +108,8 @@ function ConnectedProvider({
     silenceAlarm: () => source.silenceAlarm(),
     soundAlarm: () => source.soundAlarm(),
     simulateTamper: source instanceof MockSource ? () => source.simulateTamper() : null,
+    simulateCrash: source instanceof MockSource ? () => source.simulateCrash() : null,
+    chirp: () => source.chirp(),
   };
 
   return <DeviceContext value={value}>{children}</DeviceContext>;

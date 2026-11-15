@@ -66,7 +66,16 @@ export type Closure = {
 export type RoadKind = 'major' | 'minor' | 'cycle' | 'foot';
 
 /** A stretch of street, for drawing the ground in the 3D ride view. */
-export type Road = { kind: RoadKind; points: LatLon[] };
+export type Road = {
+  kind: RoadKind;
+  points: LatLon[];
+  name?: string;
+  /** True for a road with a marked cycle lane or track */
+  bikeLane?: boolean;
+};
+
+/** A park or a body of water, as an outline. */
+export type Area = { kind: 'park' | 'water'; points: LatLon[] };
 
 /** A building's outline and height, for the 3D ride view. */
 export type Building = { points: LatLon[]; height: number };

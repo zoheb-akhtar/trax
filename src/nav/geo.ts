@@ -109,9 +109,28 @@ export function sampleRoute(points: LatLon[], cumulative: number[], max: number)
   return out;
 }
 
+let units: 'km' | 'mi' = 'km';
+
+/** Chooses kilometres or miles for everything formatted here. */
+export function setUnits(next: 'km' | 'mi') {
+  units = next;
+}
+
 export function formatDistance(metres: number) {
+  if (units === 'mi') {
+    const miles = metres / 1609.34;
+    if (miles < 0.1) return `${Math.max(Math.round((metres * 3.281) / 50) * 50, 50)} ft`;
+    return `${miles.toFixed(miles < 10 ? 1 : 0)} mi`;
+  }
   if (metres < 1000) return `${Math.max(Math.round(metres / 10) * 10, 10)} m`;
   return `${(metres / 1000).toFixed(metres < 10000 ? 1 : 0)} km`;
+}
+
+/** A speed in the chosen units, as a rounded number and its label. */
+export function formatSpeed(kmh: number) {
+  return units === 'mi'
+    ? { value: (kmh / 1.60934).toFixed(0), unit: 'MPH' }
+    : { value: kmh.toFixed(0), unit: 'KM/H' };
 }
 
 export function formatDuration(seconds: number) {

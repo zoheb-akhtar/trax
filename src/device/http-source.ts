@@ -64,6 +64,10 @@ export class HttpSource extends SnapshotStore implements DeviceSource {
     this.post('/alarm', { active: true });
   }
 
+  chirp() {
+    this.post('/chirp', {});
+  }
+
   private async request(path: string, init?: RequestInit) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -126,7 +130,7 @@ function parseState(json: any): DeviceState {
     events: Array.isArray(json?.events)
       ? json.events.map((e: any, i: number) => ({
           id: String(e?.id ?? i),
-          kind: e?.kind === 'motion' ? 'motion' : 'tamper',
+          kind: e?.kind === 'motion' ? 'motion' : e?.kind === 'crash' ? 'crash' : 'tamper',
           ts: typeof e?.ts === 'number' ? e.ts : Date.now(),
         }))
       : [],

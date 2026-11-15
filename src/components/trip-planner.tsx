@@ -1,5 +1,5 @@
 import { SymbolView } from 'expo-symbols';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Keyboard,
@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Hairline, Spacing, Status, Type } from '@/constants/theme';
 import { searchPlaces } from '@/nav/api';
 import { formatDistance, formatDuration } from '@/nav/geo';
+import { bikeLaneShare } from '@/nav/ground';
 import { useNav } from '@/nav/nav-provider';
 import type { LatLon, Parking, Place } from '@/nav/types';
 
@@ -47,6 +48,8 @@ export function TripCard() {
   const trip = useNav();
   const { nav, route } = trip;
   const parking = trip.parking.find((p) => p.good && p.fromDestination < 350) ?? null;
+  const { roads } = trip;
+  const share = useMemo(() => (route ? bikeLaneShare(route, roads) : null), [route, roads]);
 
   return (
     <View style={styles.panel}>
@@ -106,6 +109,14 @@ export function TripCard() {
               }
               onRetry={() => nav.retryExtras()}
             />
+          )}
+          {share !== null && (
+            <View style={styles.row}>
+              <View style={[styles.dot, { backgroundColor: '#12A870' }]} />
+              <Text style={styles.body} numberOfLines={1}>
+                {Math.round(share * 100)}% on bike lanes and paths
+              </Text>
+            </View>
           )}
           {trip.extras === 'ready' && (
             <View style={styles.row}>

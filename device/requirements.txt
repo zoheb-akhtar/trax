@@ -1,2 +1,7 @@
 # Draws the test camera picture. On the real board, OpenCV replaces this.
 pillow
+
+# Speech to text for the agent proxy (agent_proxy.py). The audio decoder is pinned because
+# faster-whisper 1.2 does not work with av 16 or newer.
+faster-whisper>=1.2
+av<16

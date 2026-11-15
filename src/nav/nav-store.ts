@@ -2,9 +2,10 @@ import * as Location from 'expo-location';
 
 import { haptic } from '@/lib/haptics';
 
-import { fetchAlongRoute, fetchBuildings, fetchRoute } from './api';
+import { fetchAlongRoute, fetchRoute, fetchScenery } from './api';
 import { pointAlong, snapToRoute } from './geo';
 import type {
+  Area,
   Building,
   Closure,
   LatLon,
@@ -33,6 +34,8 @@ export type NavSnapshot = {
   roads: Road[];
   /** Building outlines along the route, for the 3D ride view. They load last. */
   buildings: Building[];
+  /** Parks and water along the route */
+  areas: Area[];
   position: Position | null;
   navigating: boolean;
   /** True while a demo ride is moving the position along the route. */
@@ -52,6 +55,7 @@ const INITIAL: NavSnapshot = {
   closures: [],
   roads: [],
   buildings: [],
+  areas: [],
   position: null,
   navigating: false,
   simulated: false,
@@ -158,6 +162,7 @@ export class NavStore {
         closures: [],
         roads: [],
         buildings: [],
+        areas: [],
         extras: 'idle',
       });
       return;
@@ -224,8 +229,8 @@ export class NavStore {
       this.set({ extras: 'error' });
     }
     try {
-      const buildings = await fetchBuildings(route, controller.signal);
-      if (!controller.signal.aborted) this.set({ buildings });
+      const scenery = await fetchScenery(route, controller.signal);
+      if (!controller.signal.aborted) this.set(scenery);
     } catch {
       // The ride view works without buildings.
     }

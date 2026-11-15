@@ -29,3 +29,21 @@ keeps working at each step.
    `DEVICE.tamper()` when it reports the bike was moved.
 
 Delete the `/debug/tamper` route before using it on the real device.
+
+## AI agent proxy (`agent_proxy.py`)
+
+The "Ask Velo" agent in the app talks to Claude through this small server, so the API key
+never goes into the app. It needs only Python 3 (no packages).
+
+```bash
+export ANTHROPIC_API_KEY=...        # your key; stays in this terminal
+export VELO_PROXY_TOKEN=some-word   # optional: stops others on the Wi-Fi using it
+python3 device/agent_proxy.py       # listens on port 8787
+```
+
+In the app's Device tab, under "AI agent", set the server address: `localhost:8787` in the
+iOS simulator, or the laptop's Wi-Fi address (printed when the proxy starts) on a real phone.
+If you set a token, enter the same one there.
+
+The proxy forwards `POST /v1/messages` only, and logs the status of each request, never the
+key or what was said. Each question costs roughly 1 to 2 cents.

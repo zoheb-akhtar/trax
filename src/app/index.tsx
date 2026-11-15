@@ -4,6 +4,7 @@ import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { FadeIn, FadeInDown, FadeOut, FadeOutDown } from 'react-native-reanimated';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { AgentButton } from '@/components/agent-button';
 import { CameraFeed } from '@/components/camera-feed';
 import { CameraSwitch } from '@/components/camera-switch';
 import { Chip } from '@/components/chip';
@@ -19,6 +20,7 @@ import { useDevice } from '@/device/device-provider';
 import {
   isCloseVehicle,
   isNearCyclist,
+  isPedestrianAhead,
   mattersWhileRiding,
   mergeCyclists,
   toWorld,
@@ -27,9 +29,11 @@ import type { Connection, Detection } from '@/device/types';
 import { useAutoCamera } from '@/device/use-auto-camera';
 import { useLinger } from '@/hooks/use-linger';
 import { haptic } from '@/lib/haptics';
-import { formatDistance, formatDuration, pointAlong } from '@/nav/geo';
+import { formatDistance, formatDuration, formatSpeed, pointAlong } from '@/nav/geo';
 import { buildGround } from '@/nav/ground';
 import { useNav } from '@/nav/nav-provider';
+import { useRideUi } from '@/ride-ui/ride-ui-provider';
+import { useSettings } from '@/settings/settings-provider';
 
 const CONNECTION_CHIP: Record<Connection, { label: string; color: string }> = {
   simulated: { label: 'Simulated', color: Status.warn },
@@ -70,9 +74,10 @@ export default function RideScreen() {
   const insets = useSafeAreaInsets();
   const { state, connection, streamUrlFor, setMode } = useDevice();
   const trip = useNav();
-  const { nav, navigating, progress, route, roads, buildings, position } = trip;
-  const [fullView, setFullView] = useState(false);
+  const { nav, navigating, progress, route, roads, buildings, areas, position } = trip;
+  const { fullView, setFullView } = useRideUi();
   const [planning, setPlanning] = useState(false);
+  useSettings(); // re-draw when units change
 
   const riding = state.mode === 'ride';
   const everything = riding ? mergeCyclists(state.detections) : [];
@@ -91,12 +96,14 @@ export default function RideScreen() {
         .filter(isNearCyclist)
         .map(toWorld)
         .find((c) => !quiet || c.z > 0) ?? null);
+  // Pedestrians in the way get one notice, however many there are.
+  const walkers = threat || cyclist ? 0 : everything.filter(isPedestrianAhead).length;
   const chip = CONNECTION_CHIP[connection];
 
   // Once a route is planned, the 3D view's ground is the real map.
   const ground = useMemo(
-    () => (route ? buildGround(route, roads, buildings) : null),
-    [route, roads, buildings],
+    () => (route ? buildGround(route, roads, buildings, areas) : null),
+    [route, roads, buildings, areas],
   );
   const at = useMemo(() => {
     // A route that is planned but not started yet is previewed from its first metres.
@@ -110,6 +117,25 @@ export default function RideScreen() {
     }
     return { ...position, heading: progress.heading };
   }, [position, progress, route, navigating]);
+
+  // What to mark on the map: the next turn, the destination and parking near it.
+  const nextTurn = navigating ? progress?.next : route?.maneuvers[1];
+  const goodParking = trip.parking.find((p) => p.good && p.fromDestination < 350);
+  const marks = useMemo(() => {
+    if (!route) return undefined;
+    const turnAt =
+      nextTurn && nextTurn.direction !== 'arrive' && nextTurn.direction !== 'depart'
+        ? {
+            ...pointAlong(route.points, route.cumulative, nextTurn.at),
+            heading: pointAlong(route.points, route.cumulative, nextTurn.at + 12).heading,
+          }
+        : undefined;
+    return {
+      turn: turnAt,
+      destination: route.points[route.points.length - 1],
+      parking: goodParking,
+    };
+  }, [route, nextTurn, goodParking]);
 
   useEffect(() => {
     if (vehicleClose) haptic.warning();
@@ -132,6 +158,7 @@ export default function RideScreen() {
             speedKmh={state.speedKmh}
             ground={ground}
             at={at}
+            marks={marks}
           />
         ) : (
           <ParkedHome onPlan={() => setPlanning(true)} />
@@ -141,9 +168,9 @@ export default function RideScreen() {
           <>
             <View style={[styles.top, { top: insets.top }]} pointerEvents="none">
               <Text style={styles.speedValue}>
-                {state.speedKmh == null ? '–' : state.speedKmh.toFixed(0)}
+                {state.speedKmh == null ? '–' : formatSpeed(state.speedKmh).value}
               </Text>
-              <Text style={styles.speedUnit}>KM/H</Text>
+              <Text style={styles.speedUnit}>{formatSpeed(0).unit}</Text>
               {navigating && progress && (
                 <View style={styles.turn}>
                   <TurnBanner progress={progress} compact />
@@ -194,6 +221,17 @@ export default function RideScreen() {
                 >
                   <Text style={[styles.noticeText, styles.cyclistText]}>
                     Cyclist {cyclist.z > 0 ? 'behind' : 'ahead'}
+                  </Text>
+                </Animated.View>
+              )}
+              {walkers > 0 && (
+                <Animated.View
+                  entering={FadeIn.duration(120)}
+                  exiting={FadeOut.duration(300)}
+                  style={[styles.notice, styles.walkerNotice]}
+                >
+                  <Text style={[styles.noticeText, styles.cyclistText]}>
+                    {walkers === 1 ? 'Pedestrian ahead' : 'Pedestrians ahead'}
                   </Text>
                 </Animated.View>
               )}
@@ -282,6 +320,10 @@ export default function RideScreen() {
         </View>
       )}
 
+      <View style={[styles.agent, { top: insets.top + Spacing.two }]} pointerEvents="box-none">
+        <AgentButton />
+      </View>
+
       <EdgeGlow side="left" active={threat?.side === 'left' || threat?.side === 'both'} />
       <EdgeGlow side="right" active={threat?.side === 'right' || threat?.side === 'both'} />
 
@@ -309,6 +351,7 @@ export default function RideScreen() {
 }
 
 const styles = StyleSheet.create({
+  agent: { position: 'absolute', right: Spacing.three },
   screen: { flex: 1, backgroundColor: '#F2F1ED' },
   stage: { flex: 1 },
   top: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },
@@ -364,6 +407,7 @@ const styles = StyleSheet.create({
     backgroundColor: Status.danger,
   },
   cyclistNotice: { backgroundColor: Status.cyclist },
+  walkerNotice: { backgroundColor: Status.warn },
   cyclistText: { color: '#04130E' },
   noticeText: { color: '#FFF', fontFamily: Type.semibold, fontSize: 13, letterSpacing: 0.2 },
   bottom: { paddingHorizontal: Spacing.three, gap: Spacing.two },

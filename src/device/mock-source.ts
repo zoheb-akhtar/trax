@@ -75,6 +75,18 @@ export class MockSource extends SnapshotStore implements DeviceSource {
     this.patchState({ alarm: true });
   }
 
+  chirp() {}
+
+  /** Pretends the rider has fallen. */
+  simulateCrash() {
+    const ts = Date.now();
+    const { state } = this.snapshot;
+    this.patchState({
+      mode: 'ride',
+      events: [{ id: `evt-${ts}`, kind: 'crash' as const, ts }, ...state.events].slice(0, 20),
+    });
+  }
+
   simulateTamper() {
     const { state } = this.snapshot;
     const ts = Date.now();

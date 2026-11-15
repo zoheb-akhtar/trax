@@ -12,12 +12,19 @@ import { StatusBar } from 'expo-status-bar';
 import { useEffect } from 'react';
 import { Appearance } from 'react-native';
 
+import { AgentProvider } from '@/agent/agent-provider';
+import { AgentCaption } from '@/components/agent-caption';
+import { AgentSheet } from '@/components/agent-sheet';
 import { AlarmTakeover } from '@/components/alarm-takeover';
+import { CrashTakeover } from '@/components/crash-takeover';
+import { VoiceAlerts } from '@/components/voice-alerts';
 import AppTabs from '@/components/app-tabs';
 import { DeviceProvider } from '@/device/device-provider';
 import { HistoryProvider } from '@/history/history-provider';
 import { NavProvider } from '@/nav/nav-provider';
+import { RideUiProvider } from '@/ride-ui/ride-ui-provider';
 import { SecurityProvider } from '@/security/security-provider';
+import { SettingsProvider } from '@/settings/settings-provider';
 
 // Hold the splash screen until the typeface has loaded, so text never flashes in a fallback font.
 SplashScreen.preventAutoHideAsync();
@@ -44,16 +51,26 @@ export default function RootLayout() {
   return (
     <ThemeProvider value={DefaultTheme}>
       <StatusBar style="dark" />
-      <DeviceProvider>
-        <NavProvider>
-          <HistoryProvider>
-            <SecurityProvider>
-              <AppTabs />
-              <AlarmTakeover />
-            </SecurityProvider>
-          </HistoryProvider>
-        </NavProvider>
-      </DeviceProvider>
+      <SettingsProvider>
+        <DeviceProvider>
+          <NavProvider>
+            <HistoryProvider>
+              <SecurityProvider>
+                <RideUiProvider>
+                  <AgentProvider>
+                    <AppTabs />
+                    <AgentCaption />
+                    <AgentSheet />
+                    <AlarmTakeover />
+                    <CrashTakeover />
+                    <VoiceAlerts />
+                  </AgentProvider>
+                </RideUiProvider>
+              </SecurityProvider>
+            </HistoryProvider>
+          </NavProvider>
+        </DeviceProvider>
+      </SettingsProvider>
     </ThemeProvider>
   );
 }

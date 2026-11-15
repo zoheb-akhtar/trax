@@ -14,6 +14,8 @@ export type RideMoment = {
   camera: CameraId;
   /** Picture path relative to the documents folder, or null if none was saved */
   file: string | null;
+  /** Where it happened, as [lat, lon], when the phone knew its position */
+  at?: [number, number];
 };
 
 export type Ride = {
@@ -28,6 +30,8 @@ export type Ride = {
   closePasses: number;
   destination: string | null;
   moments: RideMoment[];
+  /** The path ridden, as [lat, lon] points. Missing on rides saved by older versions. */
+  track?: [number, number][];
 };
 
 export type RideHistorySnapshot = { loaded: boolean; rides: Ride[] };
@@ -39,6 +43,8 @@ export type RideInput = {
   cameras: CameraId[];
   snapshotUrlFor(camera: CameraId): string | null;
   destination: string | null;
+  /** The phone's position, when known */
+  position: { lat: number; lon: number } | null;
 };
 
 const STORAGE_KEY = 'velo.rides';
@@ -57,6 +63,12 @@ const MAX_RIDES = 20;
  * That is one pass, so a new one is only counted after this long with nothing close.
  */
 const PASS_GAP_MS = 4000;
+/** A ride ends by itself after this long at a standstill. */
+const STANDSTILL_MS = 120000;
+const STILL_KMH = 2;
+/** A new point is added to the path after moving this far. */
+const TRACK_STEP_M = 8;
+const MAX_TRACK_POINTS = 3000;
 const PUBLISH_EVERY_MS = 2000;
 const SAVE_EVERY_MS = 15000;
 
@@ -72,6 +84,7 @@ export class RideHistory {
   private lastSave = 0;
   private lastCloseAt = 0;
   private capturing = false;
+  private stillSince: number | null = null;
   private loading = false;
 
   subscribe = (listener: () => void) => {
@@ -129,6 +142,25 @@ export class RideHistory {
     ride.lastSeen = now;
     if (input.destination) ride.destination = input.destination;
 
+    // Stopped for a couple of minutes: the ride is over, even if nobody tapped End ride.
+    if (speed > STILL_KMH) this.stillSince = null;
+    else if (this.stillSince === null) this.stillSince = now;
+    else if (now - this.stillSince > STANDSTILL_MS) {
+      this.end(this.stillSince);
+      return;
+    }
+
+    // The path ridden, one point every few metres.
+    const here = input.position;
+    if (here) {
+      const track = (ride.track ??= []);
+      const last = track[track.length - 1];
+      const moved = last
+        ? Math.hypot((here.lat - last[0]) * 111320, (here.lon - last[1]) * 82000)
+        : Infinity;
+      if (moved > TRACK_STEP_M && track.length < MAX_TRACK_POINTS) track.push([here.lat, here.lon]);
+    }
+
     // A picture at the moment a vehicle first gets close, from the camera that sees it.
     const close = input.detections
       .filter(isCloseVehicle)
@@ -171,7 +203,9 @@ export class RideHistory {
       closePasses: 0,
       destination: input.destination,
       moments: [],
+      track: [],
     };
+    this.stillSince = null;
     this.lastTick = now;
     this.lastFrames = 0;
     this.lastCloseAt = 0;
@@ -204,7 +238,10 @@ export class RideHistory {
     const add = (file: string | null) => {
       // The ride may have ended or been deleted while the picture was downloading.
       if (this.active !== ride) return;
-      ride.moments.push({ id: `${ts}-${camera}-${kind}`, ts, kind, camera, file });
+      const at: [number, number] | undefined = input.position
+        ? [input.position.lat, input.position.lon]
+        : undefined;
+      ride.moments.push({ id: `${ts}-${camera}-${kind}`, ts, kind, camera, file, at });
       this.publish();
     };
     const url = input.snapshotUrlFor(camera);
@@ -235,4 +272,17 @@ export class RideHistory {
     const rides = this.active ? [this.active, ...this.finished] : this.finished;
     AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(rides)).catch(() => {});
   }
+}
+
+/** How calm a ride was, 0-100, from close passes per kilometre. */
+export function safetyScore(ride: Ride) {
+  const km = Math.max(ride.distance / 1000, 0.3);
+  return Math.round(Math.min(Math.max(100 - (ride.closePasses / km) * 14, 15), 100));
+}
+
+export function safetyLabel(score: number) {
+  if (score >= 85) return 'Calm';
+  if (score >= 65) return 'Steady';
+  if (score >= 45) return 'Busy';
+  return 'Tense';
 }

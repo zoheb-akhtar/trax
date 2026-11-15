@@ -8,6 +8,7 @@
  */
 import { cumulativeDistances, decodePolyline6, distance, snapToRoute } from './geo';
 import type {
+  Area,
   Building,
   Closure,
   LatLon,
@@ -164,7 +165,12 @@ export async function fetchRoute(
   });
   const json = await res.json().catch(() => null);
   if (!res.ok || !json?.trip?.legs?.length) {
-    throw new Error(json?.error ?? `No cycling route found (${res.status})`);
+    const reason = String(json?.error ?? '');
+    // The routing service's own wording for a trip of more than 150 km.
+    if (/max distance/i.test(reason)) {
+      throw new Error('That is too far to cycle. Pick somewhere closer.');
+    }
+    throw new Error(reason || `No cycling route found (${res.status})`);
   }
 
   const leg = json.trip.legs[0];
@@ -229,6 +235,15 @@ const ROAD_KIND: Record<string, RoadKind> = {
 const SKIP_FOOTWAY = new Set(['sidewalk', 'crossing', 'traffic_island']);
 const SKIP_SERVICE = new Set(['parking_aisle', 'driveway', 'drive-through']);
 const ROAD_CLASSES = Object.keys(ROAD_KIND).join('|');
+/** How OpenStreetMap marks a cycle lane or track that is part of a road. */
+const BIKE_LANE_TAGS = ['cycleway', 'cycleway:left', 'cycleway:right', 'cycleway:both'];
+const BIKE_LANE_VALUES = new Set([
+  'lane',
+  'track',
+  'opposite_lane',
+  'opposite_track',
+  'buffered_lane',
+]);
 
 const PARKING_NEAR_ROUTE_M = 60;
 const PARKING_NEAR_DESTINATION_M = 350;
@@ -362,6 +377,8 @@ export async function fetchAlongRoute(
       roads.push({
         kind: roadKind,
         points: element.geometry.map((g: any) => ({ lat: g.lat, lon: g.lon })),
+        name: tags.name,
+        bikeLane: BIKE_LANE_TAGS.some((tag) => BIKE_LANE_VALUES.has(tags[tag])),
       });
       if (tags.access !== 'no') continue; // an open street; closed ones fall through below
     }
@@ -404,10 +421,13 @@ const METRES_PER_LEVEL = 3.2;
 const DEFAULT_HEIGHT_M = 9;
 
 /**
- * Building outlines along the route, for the 3D ride view. A separate request
+ * Building outlines, parks and water along the route, for the 3D ride view. A separate request
  * from streets and parking because a city has thousands of them.
  */
-export async function fetchBuildings(route: Route, signal?: AbortSignal): Promise<Building[]> {
+export async function fetchScenery(
+  route: Route,
+  signal?: AbortSignal,
+): Promise<{ buildings: Building[]; areas: Area[] }> {
   const margin = 0.0015; // about 150 m
   const lats = route.points.map((p) => p.lat);
   const lons = route.points.map((p) => p.lon);
@@ -420,14 +440,33 @@ export async function fetchBuildings(route: Route, signal?: AbortSignal): Promis
     .map((n) => n.toFixed(5))
     .join(',');
   const json = await overpass(
-    `[out:json][timeout:25];way["building"](${box});out tags geom 30000;`,
+    `[out:json][timeout:25];(
+      way["building"](${box});
+      way["leisure"~"^(park|garden|pitch|playground)$"](${box});
+      way["landuse"~"^(grass|recreation_ground|village_green)$"](${box});
+      way["natural"="water"](${box});
+    );out tags geom 30000;`,
     signal,
   );
 
   const buildings: Building[] = [];
+  const areas: Area[] = [];
   for (const element of json.elements ?? []) {
     const geometry: LatLon[] | undefined = element.geometry;
     if (!geometry || geometry.length < 4) continue;
+    if (!element.tags?.building) {
+      // A park or water: keep it if any part of it comes near the route.
+      const near = geometry.some(
+        (g, i) => i % 3 === 0 && snapToRoute(route.points, route.cumulative, g).off < 160,
+      );
+      if (near) {
+        areas.push({
+          kind: element.tags?.natural === 'water' ? 'water' : 'park',
+          points: geometry.slice(0, -1).map((g) => ({ lat: g.lat, lon: g.lon })),
+        });
+      }
+      continue;
+    }
     const mid = centre(element);
     if (!mid || snapToRoute(route.points, route.cumulative, mid).off > BUILDINGS_NEAR_ROUTE_M) {
       continue;
@@ -441,5 +480,5 @@ export async function fetchBuildings(route: Route, signal?: AbortSignal): Promis
     const points = geometry.slice(0, -1).map((g) => ({ lat: g.lat, lon: g.lon }));
     buildings.push({ points, height });
   }
-  return buildings;
+  return { buildings, areas };
 }

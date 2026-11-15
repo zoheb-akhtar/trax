@@ -6,7 +6,7 @@ import { deletePictureFolder, savePictureTo } from '@/history/files';
 import { placeName } from '@/nav/api';
 import type { LatLon } from '@/nav/types';
 
-export type SecurityKind = 'armed' | 'disarmed' | 'tamper' | 'motion' | 'siren';
+export type SecurityKind = 'armed' | 'disarmed' | 'tamper' | 'motion' | 'siren' | 'crash';
 
 export type SecurityEntry = {
   id: string;

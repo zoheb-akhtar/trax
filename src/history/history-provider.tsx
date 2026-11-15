@@ -13,7 +13,7 @@ const HistoryContext = createContext<HistoryContextValue | null>(null);
 export function HistoryProvider({ children }: { children: ReactNode }) {
   const [history] = useState(() => new RideHistory());
   const { state, snapshotUrlFor } = useDevice();
-  const { navigating, destination } = useNav();
+  const { navigating, destination, position } = useNav();
   const snapshot = useSyncExternalStore(history.subscribe, history.getSnapshot, history.getSnapshot);
 
   useEffect(() => {
@@ -29,6 +29,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
       cameras: state.cameras,
       snapshotUrlFor,
       destination: destinationName,
+      position,
     });
   });
 

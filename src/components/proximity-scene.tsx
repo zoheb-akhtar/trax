@@ -1,17 +1,19 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, {
   Circle,
   Defs,
   Ellipse,
+  Line,
   LinearGradient,
   Path,
   Polygon,
   Rect,
   Stop,
+  Text as SvgText,
 } from 'react-native-svg';
 
-import { Status } from '@/constants/theme';
+import { Status, Type } from '@/constants/theme';
 import { isLargeVehicle } from '@/device/geometry';
 import { TrackSmoother, type SceneObject } from '@/device/tracks';
 import type { Detection } from '@/device/types';
@@ -28,11 +30,20 @@ import type { LatLon } from '@/nav/types';
  * Positions are estimates.
  */
 
+export type SceneMarks = {
+  /** Where the next turn is, and the direction of travel after it (degrees from north) */
+  turn?: LatLon & { heading: number };
+  destination?: LatLon;
+  parking?: LatLon;
+};
+
 type Props = {
   detections: Detection[];
   speedKmh: number | null;
   /** Real streets and the route. With `at`, the ground shows the map instead of a plain road. */
   ground?: Ground | null;
+  /** Things to mark on the map: the next turn, the destination, and parking near it. */
+  marks?: SceneMarks;
   /** Where the bike is and which way it is heading (degrees clockwise from north). */
   at?: (LatLon & { heading: number }) | null;
 };
@@ -475,9 +486,10 @@ const BUILDING_MAX_HEIGHT_M = 16;
 const BUILDING_MIN_HEIGHT_M = 4;
 /** Far-to-near groups. Each is two shapes, so nearer buildings cover further ones. */
 const BUILDING_BANDS = 6;
-const WALL = '#CFCEC7';
-const ROOF = '#DDDCD5';
-const ROOF_EDGE = '#B9B8B0';
+const WALL_LIT = '#E0DFD8';
+const WALL_SHADE = '#BFBEB6';
+const ROOF = '#F1F0EB';
+const ROOF_EDGE = '#B7B6AE';
 
 /** One closed shape, always wound the same way on screen so overlapping ones never cancel. */
 function closed(xs: number[], ys: number[]) {
@@ -494,7 +506,14 @@ function closed(xs: number[], ys: number[]) {
   return `${d}Z`;
 }
 
-/** Building outlines pushed up into blocks: dark walls with a lighter roof. */
+/** Unit vector pointing towards the sun, as (east, north): low in the south-west. */
+const SUN_E = -0.6;
+const SUN_N = -0.8;
+
+/**
+ * Building outlines pushed up into blocks. Only the walls facing the camera are drawn,
+ * in a lighter or darker tone depending on whether they face the sun.
+ */
 function Buildings({
   buildings,
   pose,
@@ -507,12 +526,14 @@ function Buildings({
   const sin = Math.sin((pose.heading * Math.PI) / 180);
   const cos = Math.cos((pose.heading * Math.PI) / 180);
 
-  const visible: { z: number; fade: number; walls: string; roof: string }[] = [];
+  const visible: { z: number; fade: number; lit: string; shade: string; roof: string }[] = [];
   for (const b of buildings) {
     const distance = Math.hypot(b.centreE - pose.east, b.centreN - pose.north);
     if (distance > BUILDING_FAR_M) continue;
 
     const count = b.east.length;
+    const sx: number[] = [];
+    const sz: number[] = [];
     const baseX: number[] = [];
     const baseY: number[] = [];
     const topX: number[] = [];
@@ -530,6 +551,8 @@ function Buildings({
       const cut = Math.min(z, BUILDING_NEAR_Z);
       const base = project(x, 0, cut);
       const top = project(x, height, cut);
+      sx.push(x);
+      sz.push(z);
       baseX.push(base.x);
       baseY.push(base.y);
       topX.push(top.x);
@@ -537,13 +560,26 @@ function Buildings({
     }
     if (tooNear) continue;
 
-    let walls = '';
+    let lit = '';
+    let shade = '';
     for (let i = 0; i < count; i++) {
       const j = (i + 1) % count;
-      walls += closed(
+      const de = b.east[j] - b.east[i];
+      const dn = b.north[j] - b.north[i];
+      // The wall's outward direction on the map, then the same in the scene.
+      const outE = b.ccw ? dn : -dn;
+      const outN = b.ccw ? -de : de;
+      const outX = outE * cos - outN * sin;
+      const outZ = -(outE * sin + outN * cos);
+      const facesCamera =
+        (0 - (sx[i] + sx[j]) / 2) * outX + (EYE[2] - (sz[i] + sz[j]) / 2) * outZ > 0;
+      if (!facesCamera) continue;
+      const wall = closed(
         [baseX[i], baseX[j], topX[j], topX[i]],
         [baseY[i], baseY[j], topY[j], topY[i]],
       );
+      if (outE * SUN_E + outN * SUN_N > 0) lit += wall;
+      else shade += wall;
     }
     const de = b.centreE - pose.east;
     const dn = b.centreN - pose.north;
@@ -555,7 +591,8 @@ function Buildings({
           Math.max((distance - BUILDING_CLEAR_M) / (BUILDING_FAR_M - BUILDING_CLEAR_M), 0),
           1,
         ),
-      walls,
+      lit,
+      shade,
       roof: closed(topX, topY),
     });
   }
@@ -570,9 +607,15 @@ function Buildings({
     if (opacity <= 0.03) continue;
     bands.push(
       <Path
-        key={`w${start}`}
-        d={group.map((v) => v.walls).join('')}
-        fill={WALL}
+        key={`s${start}`}
+        d={group.map((v) => v.shade).join('')}
+        fill={WALL_SHADE}
+        opacity={opacity}
+      />,
+      <Path
+        key={`l${start}`}
+        d={group.map((v) => v.lit).join('')}
+        fill={WALL_LIT}
         opacity={opacity}
       />,
       <Path
@@ -645,18 +688,77 @@ function hasRoadUnder(ground: Ground, pose: Pose) {
   return minor.some(near) || major.some(near) || cycle.some(near) || foot.some(near);
 }
 
+/** Route colours by how cycle-friendly the road is. */
+const ROUTE_COLOR = { lane: '#12A870', quiet: Status.accent, busy: Status.warn } as const;
+const PARK = '#D9E9D5';
+const WATER = '#CBE0F0';
+
+/** Scene coordinates (x to the rider's right, -z ahead) of a point given in map metres. */
+function toScene(pose: Pose, east: number, north: number) {
+  const sin = Math.sin((pose.heading * Math.PI) / 180);
+  const cos = Math.cos((pose.heading * Math.PI) / 180);
+  const de = east - pose.east;
+  const dn = north - pose.north;
+  return { x: de * cos - dn * sin, z: -(de * sin + dn * cos) };
+}
+
+/** Parks or water as flat shapes on the ground, cut off where they run behind the camera. */
+function areasPath(areas: GroundLine[], pose: Pose, project: Projector) {
+  let d = '';
+  for (const area of areas) {
+    if (
+      area.maxE < pose.east - 150 ||
+      area.minE > pose.east + 150 ||
+      area.maxN < pose.north - 150 ||
+      area.minN > pose.north + 150
+    ) {
+      continue;
+    }
+    const xs: number[] = [];
+    const zs: number[] = [];
+    for (let i = 0; i < area.east.length; i++) {
+      const p = toScene(pose, area.east[i], area.north[i]);
+      xs.push(p.x);
+      zs.push(p.z);
+    }
+    // Clip against the line just in front of the camera.
+    const outX: number[] = [];
+    const outY: number[] = [];
+    for (let i = 0; i < xs.length; i++) {
+      const j = (i + 1) % xs.length;
+      const inI = zs[i] <= GROUND_BEHIND_M;
+      const inJ = zs[j] <= GROUND_BEHIND_M;
+      if (inI) {
+        const p = project(xs[i], 0, zs[i]);
+        outX.push(p.x);
+        outY.push(p.y);
+      }
+      if (inI !== inJ) {
+        const t = (GROUND_BEHIND_M - zs[i]) / (zs[j] - zs[i]);
+        const p = project(xs[i] + (xs[j] - xs[i]) * t, 0, GROUND_BEHIND_M);
+        outX.push(p.x);
+        outY.push(p.y);
+      }
+    }
+    if (outX.length >= 3) d += closed(outX, outY);
+  }
+  return d;
+}
+
 function MapGround({
   ground,
   pose,
   project,
   width,
   dashOffset,
+  marks,
 }: {
   ground: Ground;
   pose: Pose;
   project: Projector;
   width: number;
   dashOffset: number;
+  marks?: SceneMarks;
 }) {
   const minor = ribbons(ground.roads.minor, pose, STREET.minor.half, project);
   const foot = ribbons(ground.roads.foot, pose, STREET.foot.half, project);
@@ -670,6 +772,22 @@ function MapGround({
 
   return (
     <>
+      <Path
+        d={areasPath(
+          ground.areas.filter((a) => a.kind === 'park'),
+          pose,
+          project,
+        )}
+        fill={PARK}
+      />
+      <Path
+        d={areasPath(
+          ground.areas.filter((a) => a.kind === 'water'),
+          pose,
+          project,
+        )}
+        fill={WATER}
+      />
       {stranded && <Road project={project} dashOffset={dashOffset} width={width} haze={false} />}
       <Path d={minor} fill={STREET.minor.color} />
       <Path d={foot} fill={STREET.foot.color} />
@@ -678,18 +796,204 @@ function MapGround({
       {/* A lane under the route itself, so there is always road beneath the rider: before the
           streets have loaded, and on paths the map data has nothing for. */}
       <Path d={bed} fill={STREET.major.color} />
-      <Path
-        d={ribbons([ground.routeBed], pose, ROUTE_LANE_HALF_M, project)}
-        fill={STREET.cycle.color}
-      />
-      <Path
-        d={ribbons([ground.route], pose, ROUTE_HALF_M, project)}
-        fill={Status.accent}
-        opacity={0.9}
-      />
+      <Path d={ribbons([ground.routeBed], pose, ROUTE_LANE_HALF_M, project)} fill="#EDF1F5" />
+      {(['quiet', 'busy', 'lane'] as const).map((kind) => (
+        <Path
+          key={kind}
+          d={ribbons(ground.routeRuns[kind], pose, ROUTE_HALF_M, project)}
+          fill={ROUTE_COLOR[kind]}
+        />
+      ))}
+      {marks?.turn && <TurnArrow ground={ground} pose={pose} project={project} turn={marks.turn} />}
       <Haze project={project} width={width} />
     </>
   );
+}
+
+/** A white arrow painted on the road at the next turn, pointing the way to go. */
+function TurnArrow({
+  ground,
+  pose,
+  project,
+  turn,
+}: {
+  ground: Ground;
+  pose: Pose;
+  project: Projector;
+  turn: NonNullable<SceneMarks['turn']>;
+}) {
+  const at = toPose(ground, turn, 0);
+  const junction = toScene(pose, at.east, at.north);
+  // The direction of travel after the turn, in scene terms.
+  const relative = ((turn.heading - pose.heading) * Math.PI) / 180;
+  const dirX = Math.sin(relative);
+  const dirZ = -Math.cos(relative);
+  // An arrow outline: u runs along the direction of travel, v across it (metres).
+  const outline: [number, number][] = [
+    [11, 0],
+    [7, 2.6],
+    [7, 1],
+    [2.5, 1],
+    [2.5, -1],
+    [7, -1],
+    [7, -2.6],
+  ];
+  const corners = outline.map(([u, v]) => ({
+    x: junction.x + dirX * u - dirZ * v,
+    z: junction.z + dirZ * u + dirX * v,
+  }));
+  if (corners.some((c) => c.z > GROUND_BEHIND_M - 2 || c.z < -GROUND_AHEAD_M)) return null;
+  return (
+    <Polygon
+      points={corners
+        .map((c) => project(c.x, 0, c.z))
+        .map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`)
+        .join(' ')}
+      fill="#FFFFFF"
+      stroke="#111111"
+      strokeWidth={1.5}
+      strokeLinejoin="round"
+    />
+  );
+}
+
+/** Upright markers: a pin at the destination and a P at the parking near it. */
+function Pins({
+  ground,
+  pose,
+  project,
+  marks,
+}: {
+  ground: Ground;
+  pose: Pose;
+  project: Projector;
+  marks: SceneMarks;
+}) {
+  const pin = (where: LatLon, height: number, color: string, label: string | null, key: string) => {
+    const at = toPose(ground, where, 0);
+    const { x, z } = toScene(pose, at.east, at.north);
+    if (z > 4 || z < -GROUND_AHEAD_M || Math.abs(x) > GROUND_SIDE_M) return null;
+    const base = project(x, 0, z);
+    const top = project(x, height, z);
+    const radius = Math.max((base.y - top.y) * 0.22, 5);
+    const opacity = fog(base.depth);
+    return (
+      <Fragment key={key}>
+        <Line
+          x1={base.x}
+          y1={base.y}
+          x2={top.x}
+          y2={top.y}
+          stroke={color}
+          strokeWidth={2}
+          opacity={opacity}
+        />
+        <Circle cx={top.x} cy={top.y} r={radius} fill={color} opacity={opacity} />
+        {label ? (
+          <SvgText
+            x={top.x}
+            y={top.y + radius * 0.4}
+            fontSize={radius * 1.15}
+            fontWeight="700"
+            fill="#FFFFFF"
+            textAnchor="middle"
+            opacity={opacity}
+          >
+            {label}
+          </SvgText>
+        ) : (
+          <Circle cx={top.x} cy={top.y} r={radius * 0.4} fill="#FFFFFF" opacity={opacity} />
+        )}
+      </Fragment>
+    );
+  };
+  return (
+    <>
+      {marks.parking && pin(marks.parking, 5, Status.ok, 'P', 'parking')}
+      {marks.destination && pin(marks.destination, 8, '#111111', null, 'destination')}
+    </>
+  );
+}
+
+/** Where, in metres ahead of the rider, a street's name is placed along it. */
+const LABEL_AHEAD_M = 34;
+const LABEL_REACH_M = 60;
+const MAX_LABELS = 4;
+
+/** Street names, each placed on its road at the spot nearest to a point just ahead of the rider. */
+function StreetLabels({
+  ground,
+  pose,
+  project,
+}: {
+  ground: Ground;
+  pose: Pose;
+  project: Projector;
+}) {
+  const best = new Map<string, { x: number; z: number; off: number }>();
+  for (const kind of ['major', 'minor', 'cycle'] as const) {
+    for (const line of ground.roads[kind]) {
+      if (
+        !line.name ||
+        line.maxE < pose.east - 100 ||
+        line.minE > pose.east + 100 ||
+        line.maxN < pose.north - 100 ||
+        line.minN > pose.north + 100
+      ) {
+        continue;
+      }
+      let prev = toScene(pose, line.east[0], line.north[0]);
+      for (let i = 1; i < line.east.length; i++) {
+        const next = toScene(pose, line.east[i], line.north[i]);
+        // Closest point on this stretch to the spot ahead of the rider.
+        const dx = next.x - prev.x;
+        const dz = next.z - prev.z;
+        const lengthSq = dx * dx + dz * dz;
+        const t =
+          lengthSq === 0
+            ? 0
+            : Math.min(
+                Math.max(((0 - prev.x) * dx + (-LABEL_AHEAD_M - prev.z) * dz) / lengthSq, 0),
+                1,
+              );
+        const x = prev.x + dx * t;
+        const z = prev.z + dz * t;
+        const off = Math.hypot(x, z + LABEL_AHEAD_M);
+        const known = best.get(line.name);
+        if (off < LABEL_REACH_M && z < 2 && (!known || off < known.off)) {
+          best.set(line.name, { x, z, off });
+        }
+        prev = next;
+      }
+    }
+  }
+
+  const placed: { x: number; y: number }[] = [];
+  const labels: ReactNode[] = [];
+  for (const [name, spot] of [...best.entries()].sort((a, b) => a[1].off - b[1].off)) {
+    if (labels.length >= MAX_LABELS) break;
+    const p = project(spot.x, 0, spot.z);
+    if (placed.some((q) => Math.abs(q.y - p.y) < 16 && Math.abs(q.x - p.x) < 110)) continue;
+    placed.push(p);
+    const shared = {
+      x: p.x,
+      y: p.y + 3,
+      fontSize: 10,
+      fontFamily: Type.semibold,
+      letterSpacing: 0.8,
+      textAnchor: 'middle' as const,
+      opacity: fog(p.depth),
+    };
+    labels.push(
+      <SvgText key={`${name}-halo`} {...shared} stroke="#FFFFFF" strokeWidth={3} fill="#FFFFFF">
+        {name.toUpperCase()}
+      </SvgText>,
+      <SvgText key={name} {...shared} fill="#4A4F57">
+        {name.toUpperCase()}
+      </SvgText>,
+    );
+  }
+  return <>{labels}</>;
 }
 
 /** The rider is black so they stand out from the blue route underneath. */
@@ -833,12 +1137,19 @@ export function ProximityScene(props: Props) {
               project={project}
               width={size.width}
               dashOffset={frame.dashOffset}
+              marks={props.marks}
             />
           ) : (
             <Road project={project} dashOffset={frame.dashOffset} width={size.width} />
           )}
           {props.ground && frame.pose && (
             <Buildings buildings={props.ground.buildings} pose={frame.pose} project={project} />
+          )}
+          {props.ground && frame.pose && (
+            <StreetLabels ground={props.ground} pose={frame.pose} project={project} />
+          )}
+          {props.ground && frame.pose && props.marks && (
+            <Pins ground={props.ground} pose={frame.pose} project={project} marks={props.marks} />
           )}
           {aheadOfBike.map((o) => (
             <SceneObjectShape key={o.id} object={o} project={project} />

@@ -15,6 +15,7 @@ const LABEL: Record<SecurityKind, string> = {
   tamper: 'Bike moved',
   motion: 'Motion nearby',
   siren: 'Alarm sounded from phone',
+  crash: 'Crash detected',
 };
 
 const DOT: Record<SecurityKind, string> = {
@@ -23,6 +24,7 @@ const DOT: Record<SecurityKind, string> = {
   tamper: Status.danger,
   motion: Status.warn,
   siren: Status.danger,
+  crash: Status.warn,
 };
 
 const CAMERA = { front: 'Front camera', rear: 'Rear camera' } as const;
@@ -120,7 +122,7 @@ export function SecurityEntryDetail({
 
         {entry.pictures.length === 0 ? (
           <ThemedText themeColor="textSecondary">
-            {entry.kind === 'tamper' || entry.kind === 'motion'
+            {entry.kind === 'tamper' || entry.kind === 'motion' || entry.kind === 'crash'
               ? 'No picture was saved. Pictures need a connected Velo with a camera, and the phone in range when it happens.'
               : 'No pictures are taken for this kind of entry.'}
           </ThemedText>

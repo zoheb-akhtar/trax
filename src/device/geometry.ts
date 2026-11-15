@@ -105,7 +105,18 @@ export function mergeCyclists(detections: Detection[]): Detection[] {
 const RIDE_MODE_RANGE_M = 25;
 
 export function mattersWhileRiding(d: Detection) {
-  return d.label !== 'person' && toWorld(d).distance < RIDE_MODE_RANGE_M;
+  if (d.label === 'person') return isPedestrianAhead(d);
+  return toWorld(d).distance < RIDE_MODE_RANGE_M;
+}
+
+/** A pedestrian only matters to a rider when close and in the way: ahead, near the bike's line. */
+const PEDESTRIAN_AHEAD_M = 15;
+const PEDESTRIAN_SIDE_M = 3;
+
+export function isPedestrianAhead(d: Detection) {
+  if (d.label !== 'person') return false;
+  const p = toWorld(d);
+  return p.z < 0 && p.distance < PEDESTRIAN_AHEAD_M && Math.abs(p.x) < PEDESTRIAN_SIDE_M;
 }
 
 export function isVehicle(d: Detection) {

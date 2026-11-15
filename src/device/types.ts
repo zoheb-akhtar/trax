@@ -21,7 +21,8 @@ export type Detection = {
 
 export type SecurityEvent = {
   id: string;
-  kind: 'tamper' | 'motion';
+  /** tamper: bike moved while armed. motion: movement nearby. crash: a fall while riding. */
+  kind: 'tamper' | 'motion' | 'crash';
   /** Unix time in milliseconds */
   ts: number;
 };
@@ -56,6 +57,8 @@ export interface DeviceSource {
   silenceAlarm(): void;
   /** Sets the alarm off on purpose, to find the bike or scare someone away */
   soundAlarm(): void;
+  /** A short beep and flash, to find the bike */
+  chirp(): void;
   /** MJPEG stream URL for a camera, or null when there is no real video (simulation) */
   streamUrlFor(camera: CameraId): string | null;
   /** URL of one still picture from a camera, or null when there is no real video */
