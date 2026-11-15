@@ -9,27 +9,28 @@ The Mac side is done: `mcu.py` uses USB serial when the cable is in, otherwise i
 
 ## Board side (one time, on the board)
 
-Today the STM32's `Monitor` reaches the Mac like this:
+The STM32's `Monitor` is on the board's local port 7500. The USB bridge is:
 
-    STM32 Monitor -> arduino-router -> socat <-> /dev/ttyGS0 (USB gadget) -> Mac
+    /usr/bin/socat file:/dev/ttyGS0,raw,echo=0,b9600,crtscts=0 tcp:127.0.0.1:7500
 
-We need the same stream on TCP port 5010 instead of `/dev/ttyGS0`.
+`velo-mcu.service` relays the same port to the network on 5010. From the Mac, with the board on USB:
 
-1. On the board, find the existing bridge:
+    adb push board/velo-mcu.service /home/arduino/velo/
+    adb shell -t 'sudo cp /home/arduino/velo/velo-mcu.service /etc/systemd/system/ && sudo systemctl daemon-reload && sudo systemctl enable --now velo-mcu'
 
-       ps -eo args | grep [s]ocat
+(It asks for the board's sudo password.)
 
-   It looks like `socat <ROUTER-SIDE> /dev/ttyGS0` (or the other way round). Copy the part that
-   is **not** `/dev/ttyGS0`, e.g. `PTY,link=/tmp/...` or `UNIX-CONNECT:/var/run/...`.
+Check it, from the Mac on the same Wi-Fi as the board:
 
-2. Put that into `velo-mcu.service` in place of `ROUTER-SIDE`, then install it:
+    nc uno-q.local 5010
 
-       sudo cp velo-mcu.service /etc/systemd/system/
-       sudo systemctl daemon-reload
-       sudo systemctl enable --now velo-mcu
+It should print lines starting with `I ` (IMU), `G ` (GPS) and `H ` (heartbeat). Ctrl+C to stop.
+Then unplug the USB cable, put the board on its charger, and start the brain: it finds the
+cameras and the sensors over Wi-Fi by itself.
 
-3. From the Mac, on the same Wi-Fi: `nc uno-q.local 5010` should print lines starting with
-   `I ` (IMU), `G ` (GPS) and `H ` (heartbeat). Then start the brain without the USB cable.
+**If `nc` connects but prints nothing:** port 7500 may take only one client, and the USB bridge
+already holds it. Free it while running on Wi-Fi:
 
-Only one program can hold the router side at once. If the USB bridge (`socat ... /dev/ttyGS0`)
-and this service fight over it, stop the USB one while running on Wi-Fi.
+    adb shell -t 'sudo pkill -f "socat file:/dev/ttyGS0"'
+
+(Do this before unplugging. Plugging USB back in later and rebooting the board restores it.)

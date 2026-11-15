@@ -5,9 +5,9 @@ StartLimitIntervalSec=0
 
 [Service]
 User=arduino
-# Replace ROUTER-SIDE with the non-ttyGS0 address from `ps -eo args | grep [s]ocat`
-# (see README_MCU_WIFI.md). One phone/Mac connection at a time.
-ExecStart=/usr/bin/socat TCP-LISTEN:5010,reuseaddr ROUTER-SIDE
+# The STM32's Monitor is on the board's local port 7500 (the USB bridge is
+# `socat file:/dev/ttyGS0,... tcp:127.0.0.1:7500`). This relays it to the network.
+ExecStart=/usr/bin/socat TCP-LISTEN:5010,reuseaddr,fork TCP:127.0.0.1:7500
 Restart=always
 RestartSec=2
 
