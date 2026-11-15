@@ -48,7 +48,13 @@ for port in $PORTS; do
   code=$(curl -s -m 3 -o /dev/null -w "%{http_code}" "http://$BASE:$port/snapshot.jpg" || true)
   case "$code" in
     200) echo "$1: ok   http://$BASE:$port/stream" ;;
-    503) echo "$1: no picture yet$([ "$1" = seat ] && echo ' (is the webcam plugged into the hub?)')" ;;
+    503) if [ "$1" = seat ] && mac_cam=$(python3 -c "import board; print(board.mac_usb_webcam() or '')" 2>/dev/null) \
+            && [ -n "$mac_cam" ]; then
+           # the webcam is on this Mac (not on the board): velo_brain.py / mac_preview.py read it directly
+           echo "seat: ok   '$mac_cam' on this Mac (the brain reads it directly, not through the board)"
+         else
+           echo "$1: no picture yet$([ "$1" = seat ] && echo ' (webcam not found on the board or on this Mac: replug it)')"
+         fi ;;
     *)   echo "$1: not up (logs: journalctl -u velo-$1)" ;;
   esac
   shift
