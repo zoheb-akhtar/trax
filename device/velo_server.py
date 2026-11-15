@@ -23,8 +23,12 @@ import io
 import json
 import math
 import random
+import os
+import shutil
 import socket
+import subprocess
 import sys
+import tempfile
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -68,6 +72,52 @@ def to_box(label: str, x: float, z: float):
 
 # REPLACE: the real device reports its GPS module's fix here. This is 300 Massachusetts Ave, Boston.
 START_POSITION = (42.3430, -71.0858)
+
+
+# ---- REPLACE 4: the speaker -----------------------------------------------------------
+# What the bike says to whoever is next to it the moment it is moved while armed. The real
+# board must play this by itself, with the buzzer, without waiting for the phone.
+TAMPER_WARNING = (
+    "This bike is alarmed. You are being recorded, and the owner has been alerted. "
+    "Please step away from the bike."
+)
+
+
+class Speaker:
+    """The bike's speaker. Real version: a text-to-speech engine (espeak-ng, or piper for a
+    nicer voice) and an audio player (ffplay or aplay) driving the amplifier.
+
+    This one prints what it would say. With --speak, on a Mac, it says it out loud too.
+    """
+
+    def __init__(self) -> None:
+        self.out_loud = False
+        self.current: subprocess.Popen | None = None
+        self.lock = threading.Lock()
+
+    def _run(self, command: list[str], urgent: bool) -> None:
+        with self.lock:
+            if urgent and self.current and self.current.poll() is None:
+                self.current.terminate()  # urgent lines cut off whatever is playing
+            elif self.current and self.current.poll() is None:
+                self.current.wait()  # routine lines wait their turn
+            self.current = subprocess.Popen(command)
+
+    def say(self, text: str, urgent: bool) -> None:
+        print(f"[speaker] {'URGENT ' if urgent else ''}{text}", flush=True)
+        if self.out_loud and shutil.which("say"):
+            threading.Thread(target=self._run, args=(["say", text], urgent), daemon=True).start()
+
+    def play(self, audio: bytes) -> None:
+        print(f"[speaker] playing the owner's voice ({len(audio)} bytes)", flush=True)
+        if self.out_loud and shutil.which("afplay"):
+            path = os.path.join(tempfile.gettempdir(), "velo-owner-voice.m4a")
+            with open(path, "wb") as file:
+                file.write(audio)
+            threading.Thread(target=self._run, args=(["afplay", path], True), daemon=True).start()
+
+
+SPEAKER = Speaker()
 
 
 class Device:
@@ -151,6 +201,7 @@ class Device:
             self.events.insert(0, {"id": f"evt-{now}", "kind": "tamper", "ts": now})
             del self.events[20:]
         print("[event] bike moved -> alarm on")
+        SPEAKER.say(TAMPER_WARNING, urgent=True)
 
     def crash(self) -> None:
         """Call this when the IMU sees a fall while riding (a hard jolt, then the bike on its side)."""
@@ -185,6 +236,7 @@ class Device:
                 "battery": round(self.battery, 1),
                 "speedKmh": round(self.speed_kmh, 1),
                 "position": {"lat": round(self.lat, 6), "lon": round(self.lon, 6)},
+                "speaker": True,
                 "cameras": ["front", "rear"],
                 "detections": list(self.detections),
                 "events": list(self.events),
@@ -293,6 +345,15 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         url = urlparse(self.path)
+        if url.path == "/play":  # a recording of the owner's voice, played at the bike
+            try:
+                length = int(self.headers.get("Content-Length") or 0)
+            except ValueError:
+                length = 0
+            if not 0 < length <= 5_000_000:
+                return self._json(413, {"error": "recording missing or too large"})
+            SPEAKER.play(self.rfile.read(length))
+            return self._json(200, {"ok": True})
         body = self._body()
         if url.path == "/mode":
             mode = body.get("mode")
@@ -302,6 +363,12 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True})
         elif url.path == "/alarm":
             DEVICE.set_alarm(bool(body.get("active")))
+            self._json(200, {"ok": True})
+        elif url.path == "/say":
+            text = str(body.get("text") or "").strip()[:300]
+            if not text:
+                return self._json(400, {"error": "text is required"})
+            SPEAKER.say(text, bool(body.get("urgent")))
             self._json(200, {"ok": True})
         elif url.path == "/chirp":
             print("[mcu] CHIRP")  # REPLACE: a short beep and LED flash, to find the bike
@@ -379,7 +446,10 @@ def wait_for_enter() -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Velo device server (starter)")
     parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--speak", action="store_true",
+                        help="say the bike's lines out loud on this Mac, as if it were the speaker")
     args = parser.parse_args()
+    SPEAKER.out_loud = args.speak
 
     threading.Thread(target=DEVICE.run, daemon=True).start()
     if sys.stdin and sys.stdin.isatty():
@@ -394,6 +464,7 @@ def main() -> None:
     if not HAVE_PIL:
         print("  Pillow not installed: /stream is off (pip install -r requirements.txt)")
     print("  Press Enter here to fake someone moving the bike.")
+    print("  Speaker: " + ("out loud on this Mac" if args.speak else "printed here (add --speak to hear it)"))
     try:
         server.serve_forever()
     except KeyboardInterrupt:

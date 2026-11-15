@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { Hairline, Status, Type } from '@/constants/theme';
+import { MAP_REQUEST_HEADERS } from '@/nav/api';
 import type { LatLon } from '@/nav/types';
 
 /** Map tiles are drawn at half their pixel size so they stay sharp on a phone screen. */
@@ -85,7 +86,9 @@ export function BikeMap({ bike, you, parked }: Props) {
       {tiles.map((tile) => (
         <Image
           key={tile.key}
-          source={{ uri: tile.uri }}
+          // The map tile service asks every app to identify itself.
+          source={{ uri: tile.uri, headers: MAP_REQUEST_HEADERS }}
+          cachePolicy="disk"
           style={[styles.tile, { left: tile.left, top: tile.top }]}
         />
       ))}

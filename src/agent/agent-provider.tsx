@@ -4,7 +4,7 @@ import { createContext, use, useEffect, useRef, useState, type ReactNode } from 
 import { useDevice } from '@/device/device-provider';
 import { useRideHistory } from '@/history/history-provider';
 import { haptic } from '@/lib/haptics';
-import { hush, say, setMuted } from '@/lib/voice';
+import { hush, say, sayAfter, setMuted } from '@/lib/voice';
 import { useNav } from '@/nav/nav-provider';
 import { useRideUi } from '@/ride-ui/ride-ui-provider';
 import { useSecurity } from '@/security/security-provider';
@@ -54,13 +54,22 @@ type AgentContextValue = {
   confirming: string | null;
   answer(yes: boolean): void;
   ask(text: string): void;
-  /** Velo speaking up by itself: says a line aloud and notes it in the conversation. */
+  /**
+   * Velo speaking up by itself: says a line aloud and notes it in the conversation. If a
+   * question is in progress it waits until that is over.
+   */
   announce(text: string): void;
+  /** True for a short while after the agent itself planned a route, so it isn't briefed twice. */
+  routedByAgentRecently(): boolean;
   reset(): void;
 };
 
 /** How long the answer stays on screen after it has been given. */
 const CAPTION_LINGER_MS = 9000;
+/** A confirmation nobody answers counts as "no" after this long. */
+const CONFIRM_TIMEOUT_MS = 20000;
+/** After the agent plans a route, the separate route briefing stays quiet this long. */
+const AGENT_ROUTE_QUIET_MS = 30000;
 
 const AgentContext = createContext<AgentContextValue | null>(null);
 
@@ -85,6 +94,11 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   const [recording, setRecording] = useState(false);
   const [transcribing, setTranscribing] = useState(false);
   const ear = useRef<RecorderControl | null>(null);
+  /** True from a tap on the mic until what was said has been worked out. */
+  const hearing = useRef(false);
+  /** A line Velo wanted to say while a question was in progress. */
+  const waitingLine = useRef<string | null>(null);
+  const agentRoutedAt = useRef(0);
 
   const history = useRef<AgentMessage[]>([]);
   const lastAsked = useRef(0);
@@ -131,15 +145,27 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       confirm: (question) =>
         new Promise<boolean>((resolve) => {
           resolveConfirm.current?.(false);
-          resolveConfirm.current = resolve;
+          // Nobody answering counts as no, so the agent (and the mic) are never stuck waiting.
+          const timer = setTimeout(() => {
+            if (resolveConfirm.current === settle) answer(false);
+          }, CONFIRM_TIMEOUT_MS);
+          const settle = (yes: boolean) => {
+            clearTimeout(timer);
+            resolve(yes);
+          };
+          resolveConfirm.current = settle;
           setActive(true); // the question needs a tap, so make sure it is on screen
           setConfirming(question);
           say(question, true);
         }),
+      noteAgentRoute: () => {
+        agentRoutedAt.current = Date.now();
+      },
     };
   });
 
   const reset = () => {
+    if (busy.current) return; // the turn in progress is still writing to the conversation
     history.current = [];
     setTranscript([]);
     answer(false);
@@ -167,21 +193,26 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     setActive(true);
     setTurnFrom(add('you', text));
     let before = history.current.length;
+    let toolsRan = 0;
     const turn = () =>
       runTurn({
         client: makeClient(settings.agentUrl, settings.agentToken),
         history: history.current,
         userText: text,
         world: () => world.current!,
-        onTool: (label) => add('did', label),
+        onTool: (label) => {
+          toolsRan += 1;
+          add('did', label);
+        },
       });
     try {
       let reply: string;
       try {
         reply = await turn();
       } catch (error) {
-        // The earlier conversation was refused: forget it and ask once more on its own.
-        if (!wasRejected(error) || before === 0) throw error;
+        // The earlier conversation was refused: forget it and ask once more on its own. Not if
+        // anything was already done this turn, which asking again would do a second time.
+        if (!wasRejected(error) || before === 0 || toolsRan > 0) throw error;
         history.current = [];
         before = 0;
         reply = await turn();
@@ -199,12 +230,24 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       busy.current = false;
       setThinking(false);
       answer(false);
+      sayWaitingLine();
     }
+  };
+
+  /** Says the line Velo held back while a question was in progress, now that it is over. */
+  const sayWaitingLine = () => {
+    const line = waitingLine.current;
+    if (!line || busy.current || hearing.current) return;
+    waitingLine.current = null;
+    setTurnFrom(add('velo', line));
+    setActive(true);
+    sayAfter(line);
   };
 
   const talk = async () => {
     if (ear.current) return ear.current.finish(); // a second tap means "I'm done talking"
-    if (busy.current) return;
+    if (busy.current || hearing.current) return; // still working out the last question
+    hearing.current = true;
     hush();
     haptic.tap();
     setTurnFrom(nextId.current);
@@ -214,7 +257,15 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     if (!canListen()) {
       // No on-device recognition (Expo Go): record, and let the proxy work out the words.
       // If the proxy can't do that either, offer questions to tap instead.
-      if (!(await proxyCanHear(settings.agentUrl))) return setChoosing(true);
+      const proxy = await proxyCanHear(settings.agentUrl);
+      if (proxy !== 'ready') {
+        hearing.current = false;
+        if (proxy === 'no-speech') return setChoosing(true);
+        const message = "I can't reach the Velo agent server. Check its address in the Device tab.";
+        add('problem', message);
+        say(message, true);
+        return;
+      }
       setChoosing(false);
       setListening(true);
       setMuted(true); // no spoken alerts while the microphone is open
@@ -231,12 +282,17 @@ export function AgentProvider({ children }: { children: ReactNode }) {
 
   const heardSomething = (outcome: HeardResult) => {
     ear.current = null;
+    hearing.current = false;
     setMuted(false);
     setRecording(false);
     setTranscribing(false);
     setListening(false);
 
     if (outcome.ok) return ask(outcome.text);
+    if (outcome.reason === 'cancelled') {
+      sayWaitingLine();
+      return; // the owner stopped it on purpose: nothing to say
+    }
     if (outcome.reason === 'denied') {
       const message = 'Velo needs microphone access. Turn it on in Settings.';
       add('problem', message);
@@ -252,13 +308,12 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       add('problem', message);
       say(message, true); // spoken, because while riding nothing is shown
     }
+    sayWaitingLine();
   };
 
   const announce = (text: string) => {
-    if (busy.current || ear.current) return; // never talk over a question in progress
-    setTurnFrom(add('velo', text));
-    setActive(true);
-    say(text, true);
+    waitingLine.current = text; // only the latest is worth saying
+    sayWaitingLine(); // now if nothing is in progress, otherwise when it is over
   };
 
   const dismiss = () => {
@@ -280,7 +335,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         active,
         dismiss,
         current: transcript.filter((line) => line.id >= turnFrom),
-        enabled: settings.agentEnabled,
+        enabled: settings.loaded && settings.agentEnabled,
         open,
         setOpen: (next) => {
           setOpenState(next);
@@ -292,6 +347,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         answer,
         ask,
         announce,
+        routedByAgentRecently: () => Date.now() - agentRoutedAt.current < AGENT_ROUTE_QUIET_MS,
         reset,
       }}>
       {children}

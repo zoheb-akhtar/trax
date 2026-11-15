@@ -11,10 +11,14 @@ import {
 import { say } from '@/lib/voice';
 import { formatDistance } from '@/nav/geo';
 import { useNav } from '@/nav/nav-provider';
+import { useSecurity } from '@/security/security-provider';
 import type { TurnDirection } from '@/nav/types';
 
 /** After the last pedestrian has gone, wait this long before announcing pedestrians again. */
 const PEDESTRIAN_QUIET_MS = 8000;
+
+/** A vehicle that comes back within this long of leaving is the same approach, not a new one. */
+const VEHICLE_QUIET_MS = 3000;
 
 const TURN: Partial<Record<TurnDirection, string>> = {
   left: 'turn left',
@@ -43,10 +47,11 @@ const spoken = (metres: number) =>
  */
 export function VoiceAlerts() {
   const { state } = useDevice();
+  const { entries } = useSecurity();
   const { navigating, progress } = useNav();
   const announcedCyclists = useRef(new Set<number>());
   const pedestrians = useRef({ present: false, clearedAt: 0 });
-  const said = useRef({ turn: '', vehicle: false, alarm: false, offRoute: false, arrived: false });
+  const said = useRef({ turn: '', alarm: false, offRoute: false, arrived: false });
 
   // Turns: once when it comes into range, once more just before it.
   const next = progress?.next;
@@ -91,10 +96,23 @@ export function VoiceAlerts() {
         threat.x < -0.5 ? ', on your left' : threat.x > 0.5 ? ', on your right' : ''
       }`
     : '';
+  // A car hovering around the "close" distance flickers in and out of range; it is announced
+  // again only after the way has been clear for a few seconds.
+  const vehicle = useRef({ present: false, goneAt: 0 });
   useEffect(() => {
-    const memory = said.current;
-    if (threatLine && !memory.vehicle) say(threatLine, true);
-    memory.vehicle = Boolean(threatLine);
+    const memory = vehicle.current;
+    const now = Date.now();
+    if (!threatLine) {
+      if (memory.present) memory.goneAt = now;
+      memory.present = false;
+      return;
+    }
+    if (memory.present) return; // the same approach, perhaps now on the other side
+    if (now - memory.goneAt < VEHICLE_QUIET_MS) {
+      memory.present = true;
+      return;
+    }
+    memory.present = say(threatLine, true);
   }, [threatLine]);
 
   // A cyclist coming up from behind: said once per rider, and never over a vehicle warning.
@@ -132,8 +150,15 @@ export function VoiceAlerts() {
 
   useEffect(() => {
     const memory = said.current;
-    if (state.alarm && !memory.alarm) say('Alarm. Your bike is being moved.', true);
+    if (state.alarm && !memory.alarm) {
+      // Set off on purpose from the phone, or by someone moving the bike?
+      const newest = entries[0];
+      const fromPhone = newest?.kind === 'siren' && Date.now() - newest.ts < 15000;
+      say(fromPhone ? 'Alarm sounding.' : 'Alarm. Your bike is being moved.', true);
+    }
     memory.alarm = state.alarm;
+    // Only the alarm switching on matters; the log is read at that moment.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.alarm]);
 
   return null;

@@ -48,3 +48,7 @@ __pycache__/
 
 # Claude Code, this machine only
 .claude/settings.local.json
+
+# The agent proxy password, this machine only
+device/.proxy-token
+device/.watch.json

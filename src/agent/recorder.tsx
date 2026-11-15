@@ -14,26 +14,41 @@ import { proxyUrl } from './client';
 export type HeardResult =
   | { ok: true; text: string }
   /**
-   * denied: no microphone permission. nothing: no words were heard.
-   * unavailable: the proxy can't turn speech into text (not set up, or unreachable).
+   * denied: no microphone permission. nothing: no words were heard. cancelled: the owner
+   * stopped it. unavailable: the proxy can't turn speech into text (not set up, or unreachable).
    */
-  | { ok: false; reason: 'denied' | 'nothing' | 'unavailable' | 'failed' };
+  | { ok: false; reason: 'denied' | 'nothing' | 'cancelled' | 'unavailable' | 'failed' };
 
 /**
  * Whether the proxy can turn speech into text right now. Asked on every tap (it is a quick
  * local request), so voice starts working as soon as the proxy does, with no app restart.
  */
-export async function proxyCanHear(address: string) {
+export async function proxyCanHear(address: string): Promise<'ready' | 'no-speech' | 'unreachable'> {
   const abort = new AbortController();
-  const timer = setTimeout(() => abort.abort(), 1200);
+  const timer = setTimeout(() => abort.abort(), 2000);
   try {
     const response = await fetch(`${proxyUrl(address)}/health`, { signal: abort.signal });
-    return response.ok && (await response.json()).speech === 'ready';
+    if (!response.ok) return 'unreachable';
+    return (await response.json()).speech === 'ready' ? 'ready' : 'no-speech';
   } catch {
-    return false;
+    return 'unreachable';
   } finally {
     clearTimeout(timer);
   }
+}
+
+/** The longest the words may take to come back from the proxy. */
+const TRANSCRIBE_TIMEOUT_MS = 15000;
+/**
+ * iOS reports near-silence (about -120 dB or lower) for the first moments of a recording,
+ * before its meter settles. Readings below this, or from the first moments, are ignored.
+ */
+const METER_FLOOR_DB = -90;
+const METER_SETTLE_MS = 300;
+
+/** Back to playback, so speech comes out of the loudspeaker at full volume. */
+function playbackMode() {
+  return setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true }).catch(() => {});
 }
 
 export type RecorderControl = {
@@ -77,6 +92,9 @@ export function VoiceRecorder({ address, token, controlRef, onStopped, onDone }:
     /** The quietest and loudest levels so far, in decibels (0 is the loudest possible) */
     floor: 0,
     peak: -160,
+    /** True once a reading has been taken, so the floor starts from a real level */
+    metered: false,
+    startedAt: 0,
     spoke: false,
     lastLoud: 0,
   });
@@ -86,18 +104,21 @@ export function VoiceRecorder({ address, token, controlRef, onStopped, onDone }:
     if (state.ended) return;
     state.ended = true;
     controlRef.current = null;
+    const abort = new AbortController();
+    const timer = setTimeout(() => abort.abort(), TRANSCRIBE_TIMEOUT_MS);
     try {
       if (state.recording) await recorder.stop();
-      // Back to playback, so the spoken answer comes out of the loudspeaker at full volume.
-      await setAudioModeAsync({ allowsRecording: false, playsInSilentMode: true });
+      await playbackMode();
       const uri = recorder.uri;
-      if (!keep || !state.recording || !uri) return onDone({ ok: false, reason: 'nothing' });
+      if (!keep) return onDone({ ok: false, reason: 'cancelled' });
+      if (!state.recording || !uri) return onDone({ ok: false, reason: 'nothing' });
 
       onStopped();
       const response = await fetch(`${proxyUrl(address)}/v1/transcribe`, {
         method: 'POST',
         headers: { 'content-type': 'audio/m4a', 'x-api-key': token.trim() || 'velo-proxy' },
         body: await new File(uri).bytes(),
+        signal: abort.signal,
       });
       // 404: an older proxy without speech-to-text. 501/503: it has none, or is still loading it.
       if (response.status === 404 || response.status === 501 || response.status === 503) {
@@ -107,8 +128,10 @@ export function VoiceRecorder({ address, token, controlRef, onStopped, onDone }:
       const text = String((await response.json()).text ?? '').trim();
       onDone(text ? { ok: true, text } : { ok: false, reason: 'nothing' });
     } catch {
-      // Most often the phone can't reach the proxy at all.
+      // Most often the phone can't reach the proxy at all, or it took too long.
       onDone({ ok: false, reason: 'unavailable' });
+    } finally {
+      clearTimeout(timer);
     }
   };
 
@@ -128,10 +151,12 @@ export function VoiceRecorder({ address, token, controlRef, onStopped, onDone }:
         if (state.ended) return;
         recorder.record();
         state.recording = true;
-        state.lastLoud = Date.now();
+        state.startedAt = Date.now();
+        state.lastLoud = state.startedAt;
       } catch {
         state.ended = true;
         controlRef.current = null;
+        playbackMode();
         onDone({ ok: false, reason: 'failed' });
       }
     })();
@@ -140,6 +165,7 @@ export function VoiceRecorder({ address, token, controlRef, onStopped, onDone }:
       if (state.recording && !state.ended) {
         state.ended = true;
         recorder.stop().catch(() => {});
+        playbackMode();
       }
     };
     // Runs once: this component exists for a single recording.
@@ -152,7 +178,13 @@ export function VoiceRecorder({ address, token, controlRef, onStopped, onDone }:
     const state = run.current;
     if (!state.recording || state.ended) return;
     const now = Date.now();
-    if (typeof metering === 'number') {
+    const settled = now - state.startedAt > METER_SETTLE_MS;
+    if (typeof metering === 'number' && settled && metering > METER_FLOOR_DB) {
+      if (!state.metered) {
+        state.metered = true;
+        state.floor = metering;
+        state.peak = metering;
+      }
       if (metering < state.floor) state.floor = metering;
       if (metering > state.peak) state.peak = metering;
       if (state.peak > state.floor + SPEECH_ABOVE_FLOOR_DB) state.spoke = true;

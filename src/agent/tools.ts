@@ -17,6 +17,9 @@ export type AgentWorld = {
     silenceAlarm(): void;
     chirp(): void;
     snapshotUrlFor(camera: CameraId): string | null;
+    /** Says a line out loud through the bike's own speaker */
+    sayOnBike(text: string, urgent: boolean): Promise<boolean>;
+    hasSpeaker: boolean;
   };
   trip: NavSnapshot;
   nav: NavStore;
@@ -34,6 +37,8 @@ export type AgentWorld = {
   };
   /** Asks the owner in the app and resolves with their answer. */
   confirm(question: string): Promise<boolean>;
+  /** Notes that the agent planned a route itself, so the app doesn't brief it again. */
+  noteAgentRoute(): void;
 };
 
 export type AppScreen = 'ride' | 'history' | 'security' | 'device';
@@ -144,6 +149,17 @@ const DEFINITIONS: Tool[] = [
     input_schema: NO_INPUT,
   },
   {
+    name: 'speak_through_bike',
+    description:
+      "Says a short message out loud through the bike's own speaker, for whoever is next to the bike: for example asking someone to step away while the owner is elsewhere. Keep it calm, factual and under 25 words. Never accuse anyone of stealing, never threaten, and never describe skin colour, ethnicity, age, gender or body; clothing only. Not for talking to the owner.",
+    input_schema: {
+      type: 'object',
+      properties: { message: { type: 'string', description: 'What the bike should say' } },
+      required: ['message'],
+      additionalProperties: false,
+    },
+  },
+  {
     name: 'show_camera',
     description: 'Shows the live picture from a camera on the Ride screen for the owner to look at.',
     input_schema: { type: 'object', properties: { camera: CAMERA }, required: ['camera'], additionalProperties: false },
@@ -228,10 +244,13 @@ const clock = (ts: number) => new Date(ts).toLocaleTimeString([], { hour: 'numer
 function deviceStatus(world: AgentWorld) {
   const { state, connection } = world.device;
   const { parked } = world.security;
+  // Without a live link, the mode and alarm are only what Velo last reported.
+  const live = connection === 'connected' || connection === 'simulated';
+  const known = live ? '' : 'last known before losing the connection: ';
   return [
     `connection: ${connection}`,
-    state.mode === 'security' ? 'parked and armed' : 'ride mode (not armed)',
-    `alarm: ${state.alarm ? 'SOUNDING' : 'quiet'}`,
+    `${known}${state.mode === 'security' ? 'parked and armed' : 'ride mode (not armed)'}`,
+    `${known}alarm ${state.alarm ? 'SOUNDING' : 'quiet'}`,
     `battery: ${state.battery == null ? 'unknown' : `${Math.round(state.battery)}%`}`,
     parked ? `parked${parked.place ? ` at ${parked.place}` : ''} since ${clock(parked.ts)}` : null,
   ]
@@ -285,8 +304,13 @@ const ok = (label: string, content: string): ToolOutcome => ({ label, content })
 const failed = (label: string, content: string): ToolOutcome => ({ label, content, isError: true });
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** A picture from the device must come back within this long, or the question would hang. */
+const PICTURE_TIMEOUT_MS = 5000;
+
 async function pictureAsBase64(url: string) {
-  const response = await fetch(url);
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), PICTURE_TIMEOUT_MS);
+  const response = await fetch(url, { signal: abort.signal }).finally(() => clearTimeout(timer));
   if (!response.ok) throw new Error(`camera returned ${response.status}`);
   const blob = await response.blob();
   return new Promise<string>((resolve, reject) => {
@@ -370,6 +394,7 @@ export async function runTool(name: string, input: unknown, world: AgentWorld): 
         const near = trip.position ?? trip.origin ?? world.security.parked;
         const [place] = await searchPlaces(query, near);
         if (!place) return failed(`Searched for "${query}"`, `No place found for "${query}".`);
+        world.noteAgentRoute();
         nav.setDestination(place);
         const settled = await routeSettled(nav);
         if (settled.status !== 'ready' || !settled.route) {
@@ -386,7 +411,13 @@ export async function runTool(name: string, input: unknown, world: AgentWorld): 
 
     case 'start_navigation': {
       if (!nav.getSnapshot().route) return failed('Start navigation', 'There is no planned route. Set a destination first.');
-      if (device.state.mode !== 'ride') device.setMode('ride');
+      if (device.state.mode !== 'ride') {
+        // Starting a ride disarms the bike, which always needs the owner's yes.
+        if (!(await world.confirm('Disarm Velo and start the ride?'))) {
+          return ok('Navigation not started', 'The owner declined; Velo is still armed and guidance has not started.');
+        }
+        device.setMode('ride');
+      }
       await nav.start(false);
       return ok('Started navigation', `Guidance started to ${nav.getSnapshot().destination?.name ?? 'the destination'}.`);
     }
@@ -438,6 +469,18 @@ export async function runTool(name: string, input: unknown, world: AgentWorld): 
       }
       world.ui.openScreen('security');
       return ok('Showing the bike on the map', `The map is showing. ${bikeLocation(world)}`);
+
+    case 'speak_through_bike': {
+      const message = String(args.message ?? '').trim().slice(0, 300);
+      if (!message) return failed('Speak through the bike', 'No message was given.');
+      if (!device.hasSpeaker) {
+        return failed('Speak through the bike', 'The bike has no speaker connected, or Velo is out of range.');
+      }
+      const sent = await device.sayOnBike(message, true);
+      return sent
+        ? ok('Spoke through the bike', `The bike said: "${message}"`)
+        : failed('Speak through the bike', 'The message could not be sent to the bike.');
+    }
 
     case 'show_camera': {
       const camera: CameraId = args.camera === 'front' ? 'front' : 'rear';

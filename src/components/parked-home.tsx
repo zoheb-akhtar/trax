@@ -1,3 +1,7 @@
+// Distances are formatted in the units chosen in settings, which the React Compiler can't
+// see as an input; memoizing here would leave old units on screen after a change.
+'use no memo';
+
 import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
@@ -12,7 +16,7 @@ import { Hairline, Spacing, Status, Type } from '@/constants/theme';
 import { useDevice } from '@/device/device-provider';
 import type { CameraId, Connection } from '@/device/types';
 import { useRideHistory } from '@/history/history-provider';
-import { safetyLabel, safetyScore } from '@/history/ride-history';
+import { safetyLabel, safetyScore, weekStart, combinedSafetyScore } from '@/history/ride-history';
 import { formatDistance, formatDuration } from '@/nav/geo';
 import { useNav } from '@/nav/nav-provider';
 import { useRideUi } from '@/ride-ui/ride-ui-provider';
@@ -72,13 +76,13 @@ export function ParkedHome({ onPlan }: { onPlan(): void }) {
 
   const lastRide = rides.find((ride) => ride.endedAt != null);
   const [openedAt] = useState(() => Date.now());
-  const weekAgo = openedAt - 7 * DAY_MS;
-  const week = rides.filter((ride) => ride.startedAt > weekAgo);
+  const thisWeek = weekStart(openedAt);
+  const week = rides.filter((ride) => ride.startedAt >= thisWeek);
   const weekDistance = week.reduce((sum, ride) => sum + ride.distance, 0);
   const recent = entries.slice(0, 3);
-  // Distance for each of the last seven days, oldest first.
+  // Distance for each of the seven days, oldest first.
   const days = Array.from({ length: 7 }, (_, i) => {
-    const start = openedAt - (7 - i) * DAY_MS;
+    const start = thisWeek + i * DAY_MS;
     return week
       .filter((ride) => ride.startedAt >= start && ride.startedAt < start + DAY_MS)
       .reduce((sum, ride) => sum + ride.distance, 0);
@@ -86,9 +90,8 @@ export function ParkedHome({ onPlan }: { onPlan(): void }) {
   const longest = Math.max(...days, 1);
   const weekPasses = week.reduce((sum, ride) => sum + ride.closePasses, 0);
   const weekRate = weekDistance > 300 ? (weekPasses / (weekDistance / 1000)).toFixed(1) : null;
-  const score = week.length
-    ? Math.round(week.reduce((sum, ride) => sum + safetyScore(ride), 0) / week.length)
-    : null;
+  // The whole week's close passes over its whole distance, as the explanation below says.
+  const score = combinedSafetyScore(week);
   const batteryInk = (state.battery ?? 100) < 20 ? '#C2410C' : '#0E8A5F';
   const batteryColors: [string, string] =
     (state.battery ?? 100) < 20 ? ['#FBE4DC', '#FBE4DC'] : ['#E2F3E9', '#E2F3E9'];
@@ -131,6 +134,8 @@ export function ParkedHome({ onPlan }: { onPlan(): void }) {
           <View style={styles.hero}>
             <Image
               source={{ uri: `${main.url}&t=${tick}` }}
+              // A new picture every few seconds: keeping each one would fill the phone.
+              cachePolicy="none"
               style={StyleSheet.absoluteFill}
               contentFit="cover"
               transition={300}

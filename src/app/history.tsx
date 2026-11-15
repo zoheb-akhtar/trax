@@ -1,3 +1,7 @@
+// Distances are formatted in the units chosen in settings, which the React Compiler can't
+// see as an input; memoizing here would leave old units on screen after a change.
+'use no memo';
+
 import { Image } from 'expo-image';
 import { Fragment, useEffect, useRef, useState } from 'react';
 import {
@@ -24,8 +28,8 @@ import { Hairline, Spacing, Status, Type } from '@/constants/theme';
 import type { CameraId } from '@/device/types';
 import { pictureUri } from '@/history/files';
 import { useRideHistory } from '@/history/history-provider';
-import { safetyLabel, safetyScore, type Ride, type RideMoment } from '@/history/ride-history';
-import { formatDistance } from '@/nav/geo';
+import { safetyLabel, safetyScore, type Ride, type RideMoment, weekStart } from '@/history/ride-history';
+import { formatDistance, formatSpeed } from '@/nav/geo';
 import { useSecurity } from '@/security/security-provider';
 
 const time = (ts: number, seconds = false) =>
@@ -86,7 +90,10 @@ export default function HistoryScreen() {
   const [rideWeeks, setRideWeeks] = useState(1);
   const [securityWeeks, setSecurityWeeks] = useState(1);
   const [openedAt] = useState(() => Date.now());
-  const weeksAgo = (ts: number) => Math.max(Math.floor((openedAt - ts) / WEEK_MS), 0);
+  // Week 0 is this week (today and the six days before, as on the home screen); then back in sevens.
+  const thisWeek = weekStart(openedAt);
+  const weeksAgo = (ts: number) =>
+    ts >= thisWeek ? 0 : 1 + Math.floor((thisWeek - ts - 1) / WEEK_MS);
   const ridesThisWeek = rides.filter((r) => weeksAgo(r.startedAt) === 0).length;
   const entriesThisWeek = security.entries.filter((e) => weeksAgo(e.ts) === 0).length;
   const rideGroups = byWeek(rides, (r) => weeksAgo(r.startedAt), rideWeeks);
@@ -344,14 +351,18 @@ function RideDetail({
     }
   }, [shownIndex, camera]);
 
+  // The timer reads the frame shown now through a ref; stopping at the end happens outside a
+  // state updater, which must not have side effects.
+  const shownNow = useRef(index);
+  useEffect(() => {
+    shownNow.current = index;
+  });
   useEffect(() => {
     if (!playing) return;
     const timer = setInterval(() => {
-      setIndex((i) => {
-        if (i + 1 < frames.length) return i + 1;
-        setPlaying(false);
-        return i;
-      });
+      const i = shownNow.current;
+      if (i + 1 < frames.length) setIndex(i + 1);
+      else setPlaying(false);
     }, PLAY_FRAME_MS);
     return () => clearInterval(timer);
   }, [playing, frames.length]);
@@ -392,8 +403,8 @@ function RideDetail({
         <View style={styles.stats}>
           <Stat label="Time" value={duration(ride)} />
           <Stat label="Dist" value={formatDistance(ride.distance)} />
-          <Stat label="Avg" value={`${averageKmh(ride).toFixed(0)} km/h`} />
-          <Stat label="Top" value={`${ride.maxSpeedKmh.toFixed(0)} km/h`} />
+          <Stat label="Avg" value={speedText(averageKmh(ride))} />
+          <Stat label="Top" value={speedText(ride.maxSpeedKmh)} />
         </View>
 
         <View style={styles.scoreRow}>
@@ -543,6 +554,12 @@ function Stat({ label, value }: { label: string; value: string }) {
       </ThemedText>
     </View>
   );
+}
+
+/** "18 km/h" or "11 mph", in the units chosen in settings. */
+function speedText(kmh: number) {
+  const { value, unit } = formatSpeed(kmh);
+  return `${value} ${unit.toLowerCase()}`;
 }
 
 const styles = StyleSheet.create({

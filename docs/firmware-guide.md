@@ -57,6 +57,11 @@ Test on a phone hotspot early. Venue and campus Wi-Fi often stop devices seeing 
 - [ ] `GET /snapshot?camera=front` returns one JPEG of the current view.
 - [ ] Capture runs in its own thread and keeps the latest frame in memory; the web
       handlers only send that frame.
+- [ ] The web server is **threaded** (Python's `ThreadingHTTPServer`, or Flask with
+      `threaded=True`). The app keeps `/stream` open the whole time; a single-threaded server
+      then never answers `/state`, and the app shows Velo as offline.
+- [ ] Frames are **4:3** (640×480). The app places boxes and works out distances for a 4:3
+      picture. Don't mirror the rear image.
 - [ ] With one camera, ignore the `camera` parameter. With two, also list
       `"cameras": ["front", "rear"]` in `/state` and serve both.
 
@@ -75,12 +80,17 @@ This is the core demo: arm, move the bike, alarm, photo.
 - [ ] When the sensor trips while armed, the microcontroller sounds the buzzer **at
       once, by itself**. It must not wait for the phone or the network.
 - [ ] It then tells the Linux side, which sets `"alarm": true` and adds an event to the
-      front of `events`: `{"id": "<unique>", "kind": "tamper", "ts": <Unix milliseconds>}`.
+      front of `events`: `{"id": "evt-<ts>", "kind": "tamper", "ts": <Unix milliseconds>}`.
+      The id must stay unique after a reboot: a counter that restarts at 1 makes the app
+      ignore the next theft as one it has already seen.
 - [ ] `POST /alarm {"active": false}` stops the buzzer and sets `alarm` to false.
 - [ ] `POST /alarm {"active": true}` sounds the buzzer on purpose (the app's Sound alarm
       button). It does not add an event.
 - [ ] The motion threshold ignores wind and passing traffic but catches a lift or a
       shake. Tune it on the real bike.
+- [ ] When the sensor trips, the speaker also says the warning from
+      [device-api.md](device-api.md#warning-on-tamper) by itself, alongside the buzzer, and
+      repeats it every 20 seconds or so while the alarm sounds.
 - [ ] A status LED shows armed / not armed.
 - [ ] `/state` keeps the last 20 events, so the app can catch up after being out of range.
 
@@ -99,7 +109,8 @@ Needed for the 3D ride view, the "vehicle close" warning and close-pass history.
 - [ ] Run a detector on camera frames in its own thread. A stock COCO model works: the
       app understands `car`, `truck`, `bus`, `motorcycle`, `bicycle`, `person`.
 - [ ] Put results in `/state` as `detections`, each with `label`, `confidence`, `box`
-      and `camera`.
+      and `camera`. **Always include `camera`**, even with one camera.
+- [ ] The app ignores detections under 0.5 confidence.
 - [ ] `box` is `[x, y, width, height]` as **fractions of the frame (0 to 1)**, origin
       top-left. Not pixels. Do not pad or clip boxes: the app estimates distance from
       box height.
@@ -124,14 +135,33 @@ the distance estimate depends on the field of view.
   security mode. This is what powers "find my bike". Omit it until the GPS has a fix.
 - [ ] `battery` as 0–100, if the power board can report it. Omit it otherwise.
 
+Without `speedKmh` the app records no rides at all: History stays empty, and there are no
+close-pass counts or safety scores. A ride starts when speed goes over 5 km/h.
+
 **Check:** the app's speed reads 0 at rest and rises when the bike moves.
 
-## Stage 6: stretch
+## Stage 6: speaker
+
+The app speaks through the bike while riding, and the owner can warn someone at a parked
+bike: a set warning, a sentence written from the camera picture, or their own voice.
+
+- [ ] A text-to-speech engine on the Linux side: `espeak-ng` is quick to set up, `piper`
+      sounds much better.
+- [ ] `"speaker": true` in `/state` once it works.
+- [ ] `POST /say {"text": ..., "urgent": true|false}` says the text. Urgent lines cut off
+      whatever is playing. Answer at once and speak in the background.
+- [ ] `POST /play` with an m4a recording plays it at once (`ffplay -nodisp -autoexit`).
+- [ ] Loud enough to hear over traffic, pointed at the rider.
+
+**Check:** the checker's "Speaker" section passes. In the app, Device tab → Speak from: Bike,
+then start a ride: warnings come out of the bike. Arm it, move it, and on the alarm screen try
+Warn them and Hold to talk.
+
+## Stage 7: stretch
 
 In rough order of value:
 
 - [ ] Second camera, with detections tagged `front` or `rear`.
-- [ ] Spoken warnings through the speaker and amplifier.
 - [ ] A short video clip saved around each alarm and close pass.
 - [ ] Alerts when the phone is away: join a known Wi-Fi network and send a push directly.
 
@@ -143,6 +173,12 @@ In rough order of value:
 - Detection running inside the request handler, making `/state` slow.
 - The buzzer triggered by the Linux side only, so it fails when Linux is busy or rebooting.
 - A new `id` for every detection on every frame.
+- Event ids that restart at 1 after a reboot.
+- A single-threaded web server, which freezes `/state` while a camera stream is open.
+- Leaving `camera` off detections, which puts a rear camera's cars in front of the bike.
+- Leaving the test routes in: remove **all** of `/debug/tamper`, `/debug/crash` and
+  `/debug/car` before the demo, or anyone on the network can set off the alarm or the crash
+  screen.
 - Removing power from the board without shutting Linux down, which can corrupt its storage.
 
 ## Done means

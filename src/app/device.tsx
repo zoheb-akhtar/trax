@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 
+import { testPush, useLaptopPushes } from '@/components/push-watcher';
+import { notifyNow, pushProjectId } from '@/lib/notify';
 import { Screen } from '@/components/screen';
 import { ScreenHeader } from '@/components/screen-header';
 import { ThemedText } from '@/components/themed-text';
@@ -16,9 +18,26 @@ import { useSettings } from '@/settings/settings-provider';
 
 export default function DeviceScreen() {
   const theme = useTheme();
-  const { settings, updateSettings, state, connection, simulateTamper, simulateCrash } =
-    useDevice();
+  const {
+    settings,
+    updateSettings,
+    state,
+    connection,
+    simulateTamper,
+    simulateCrash,
+    hasSpeaker,
+  } = useDevice();
   const prefs = useSettings();
+  const pushOn = useLaptopPushes();
+  const testNotification = async () => {
+    if (pushOn) {
+      const problem = await testPush(prefs.agentUrl, prefs.agentToken);
+      if (!problem) return;
+      Alert.alert('Push not sent', problem);
+    }
+    const shown = await notifyNow('Velo', 'This is a test notification. Alerts will look like this.');
+    if (!shown) Alert.alert('Notifications are off', 'Allow notifications for Velo in Settings.');
+  };
   const { rides, clearRides, loadSampleWeek } = useRideHistory();
   const { entries, clearEntries } = useSecurity();
   const clearHistory = () =>
@@ -140,6 +159,24 @@ export default function DeviceScreen() {
             <ThemedText style={styles.grow}>Spoken alerts</ThemedText>
             <Switch value={prefs.voice} onValueChange={(voice) => prefs.update({ voice })} />
           </View>
+          <View style={styles.choice}>
+            <ThemedText style={styles.grow}>Speak from</ThemedText>
+            {(['bike', 'phone', 'both'] as const).map((where) => (
+              <Button
+                key={where}
+                title={where === 'bike' ? 'Bike' : where === 'phone' ? 'Phone' : 'Both'}
+                size="small"
+                variant={prefs.speakFrom === where ? 'primary' : 'secondary'}
+                onPress={() => prefs.update({ speakFrom: where })}
+              />
+            ))}
+          </View>
+          <ThemedText type="small" themeColor="textSecondary">
+            {hasSpeaker
+              ? 'Velo’s speaker is connected.'
+              : 'Velo has no speaker connected, so the phone speaks for now.'}{' '}
+            “Bike” falls back to the phone whenever the bike can’t be reached.
+          </ThemedText>
         </Card>
 
         <Card>
@@ -164,6 +201,21 @@ export default function DeviceScreen() {
             on this phone only.
           </ThemedText>
         </Card>
+
+        <Card>
+          <ThemedText type="label">Notifications</ThemedText>
+          <ThemedText type="small" themeColor="textSecondary">
+            {pushOn
+              ? 'The laptop is watching Velo and sends a notification when the bike is moved, even with this app closed.'
+              : settings.source !== 'device'
+                ? 'Velo shows a notification when the bike is moved while this app is open. With a real Velo connected, the laptop can also notify you with the app closed.'
+                : pushProjectId()
+                  ? 'Velo shows a notification when the bike is moved while this app is open. Allow notifications and connect the agent server so the laptop can notify you with the app closed.'
+                  : 'Velo shows a notification when the bike is moved while this app is open. Notifications with the app closed need this project set up for push (eas init).'}
+          </ThemedText>
+          <Button title="Send a test notification" variant="secondary" onPress={testNotification} />
+        </Card>
+
 
         {simulateTamper && (
           <Card>

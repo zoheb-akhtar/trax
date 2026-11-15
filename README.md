@@ -10,10 +10,17 @@ simulated device or a real one over the local network.
 
 ```bash
 npm install
-npx expo start
+npm start
 ```
 
 Then press `i` for the iOS simulator, or scan the QR code with Expo Go on a phone.
+
+Use `npm start`, not a bare `npx expo start`: the project includes `expo-dev-client` (for a
+future native build with on-device speech recognition), and with it installed Expo starts in
+development-build mode, whose QR code Expo Go can't open. `npm start` passes `--go`.
+
+On a real phone, the phone and the laptop must be on the same network. Venue Wi-Fi often
+blocks devices from reaching each other; if the app can't connect, put both on a phone hotspot.
 
 ## Run the test device server
 
@@ -29,6 +36,13 @@ python3 -m venv .venv
 
 In the app's **Device** tab, enter the address the server prints (`localhost:8000` from the iOS
 simulator on the same Mac).
+
+## Run the AI agent server
+
+The "Ask Velo" agent and the microphone go through a small server on the laptop, which holds
+the API key. See [device/README.md](device/README.md#ai-agent-proxy-agent_proxypy). It prints a
+password (`velo-1234`); enter it in the app's **Device** tab on a phone. The simulator doesn't
+need it.
 
 ## What's in the app
 

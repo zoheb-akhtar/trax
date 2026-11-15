@@ -38,6 +38,8 @@ export type DeviceState = {
   speedKmh: number | null;
   /** Where the device's own GPS says the bike is, or null without a GPS or a fix */
   position: LatLon | null;
+  /** True when the device has a speaker and accepts /say and /play */
+  speaker: boolean;
   /** Cameras fitted to the device */
   cameras: CameraId[];
   detections: Detection[];
@@ -63,6 +65,13 @@ export interface DeviceSource {
   soundAlarm(): void;
   /** A short beep and flash, to find the bike */
   chirp(): void;
+  /**
+   * Says a line through the bike's speaker. Urgent lines cut off whatever it is saying.
+   * Returns false if it could not be sent (no speaker, or no connection).
+   */
+  say(text: string, urgent: boolean): Promise<boolean>;
+  /** Plays a short recording (m4a) through the bike's speaker, e.g. the owner's voice. */
+  play(audio: Uint8Array): Promise<boolean>;
   /** MJPEG stream URL for a camera, or null when there is no real video (simulation) */
   streamUrlFor(camera: CameraId): string | null;
   /** URL of one still picture from a camera, or null when there is no real video */
@@ -75,6 +84,7 @@ export const EMPTY_STATE: DeviceState = {
   battery: null,
   speedKmh: null,
   position: null,
+  speaker: false,
   cameras: ['front'],
   detections: [],
   events: [],

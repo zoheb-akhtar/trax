@@ -54,11 +54,8 @@ const RENAME_M = 40;
 
 const STORAGE_KEY = 'velo.security';
 const MAX_ENTRIES = 100;
-/**
- * A picture is only worth taking if the event has just happened. Events learned
- * about later (after being out of range) are logged without one.
- */
-const FRESH_MS = 8000;
+/** Ids of device events already handled, kept across reloads so cleared ones stay cleared. */
+const SEEN_KEPT = 300;
 
 /** The record of what has happened to the bike, kept on the phone. One instance for the app. */
 export class SecurityLog {
@@ -69,6 +66,12 @@ export class SecurityLog {
   private seen = new Set<string>();
   private lastMode: DeviceMode | null = null;
   private loading = false;
+  /**
+   * False until the first update after (re)connecting. Events already in the device's list at
+   * that point happened while the phone wasn't listening: they are logged without a picture.
+   * Anything that turns up after that has just happened, whatever the device's clock says.
+   */
+  private primed = false;
 
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -91,6 +94,7 @@ export class SecurityLog {
     }
     const entries = stored.entries ?? [];
     for (const entry of entries) this.seen.add(entry.id);
+    for (const id of (stored as { seen?: string[] }).seen ?? []) this.seen.add(id);
     this.set(
       { loaded: true, entries, parked: stored.parked ?? null, lastSeen: stored.lastSeen ?? null },
       false,
@@ -99,10 +103,18 @@ export class SecurityLog {
 
   /** Call with the device's latest state, as often as it changes. */
   update(input: SecurityInput) {
-    if (!this.snapshot.loaded || !input.tracking) return;
+    if (!this.snapshot.loaded) return;
+    if (!input.tracking) {
+      this.primed = false;
+      return;
+    }
     if (input.position) this.see(input.position);
+    const fresh = this.primed;
+    this.primed = true;
 
-    if (this.lastMode && this.lastMode !== input.mode) {
+    // A change of mode the phone saw happen. Connecting to a device that is already armed is
+    // not the owner arming it, so the first update only takes note of the mode.
+    if (fresh && this.lastMode && this.lastMode !== input.mode) {
       if (input.mode === 'security') {
         const entry = this.add({ id: `armed-${Date.now()}`, ts: Date.now(), kind: 'armed' });
         this.park(entry.id);
@@ -115,8 +127,11 @@ export class SecurityLog {
 
     for (const event of input.events) {
       if (this.seen.has(event.id)) continue;
-      const entry = this.add({ id: event.id, ts: event.ts, kind: event.kind });
-      if (Date.now() - event.ts < FRESH_MS) this.photograph(entry.id, input);
+      // The device's clock may be off (it may have no internet time), so a new event is timed by
+      // the phone. One learned about late keeps the device's time, but never one in the future.
+      const ts = fresh ? Date.now() : Math.min(event.ts, Date.now());
+      const entry = this.add({ id: event.id, ts, kind: event.kind });
+      if (fresh) this.photograph(entry.id, input);
     }
   }
 
@@ -229,7 +244,8 @@ export class SecurityLog {
     this.listeners.forEach((l) => l());
     if (save) {
       const { entries, parked, lastSeen } = this.snapshot;
-      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ entries, parked, lastSeen })).catch(
+      const seen = [...this.seen].slice(-SEEN_KEPT);
+      AsyncStorage.setItem(STORAGE_KEY, JSON.stringify({ entries, parked, lastSeen, seen })).catch(
         () => {},
       );
     }

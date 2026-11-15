@@ -142,7 +142,19 @@ const ON_ROAD_M = 14;
  * Says, for each stretch between route points, how cycle-friendly the road under it is.
  * Before the street data has loaded every stretch is 'quiet'.
  */
+/** The last answer, since the ride view, the route card and the briefing all ask for the same one. */
+let lastClassified: { route: Route; roads: Road[]; classes: RouteClass[] } | null = null;
+
 export function classifyRoute(route: Route, roads: Road[]): RouteClass[] {
+  if (lastClassified && lastClassified.route === route && lastClassified.roads === roads) {
+    return lastClassified.classes;
+  }
+  const classes = classifyFresh(route, roads);
+  lastClassified = { route, roads, classes };
+  return classes;
+}
+
+function classifyFresh(route: Route, roads: Road[]): RouteClass[] {
   const classes: RouteClass[] = [];
   // Roads as boxes first, so most are ruled out without measuring.
   const boxed = roads.map((road) => {

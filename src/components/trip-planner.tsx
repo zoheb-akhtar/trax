@@ -1,3 +1,7 @@
+// Distances are formatted in the units chosen in settings, which the React Compiler can't
+// see as an input; memoizing here would leave old units on screen after a change.
+'use no memo';
+
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -72,7 +76,7 @@ export function TripCard() {
             {destination?.name ?? 'Route'}
           </Text>
           {facts && <Text style={styles.muted}>{facts}</Text>}
-          {trip.status === 'error' && <Text style={styles.error}>{trip.error}</Text>}
+          {trip.error && <Text style={styles.error}>{trip.error}</Text>}
         </View>
         <Button title="Cancel" size="small" variant="secondary" onPress={() => nav.clear()} />
       </View>
@@ -210,10 +214,16 @@ type Field = 'from' | 'to';
 /** Start and destination fields with search-as-you-type. Calls `onDone` once a destination is picked. */
 export function TripSearch({ onDone }: { onDone(): void }) {
   const { nav, origin, destination, position } = useNav();
-  const near: LatLon | null = position ?? origin ?? destination;
+  const nearExact: LatLon | null = position ?? origin ?? destination;
+  // Rounded to about a kilometre, so a stream of GPS fixes doesn't restart the search each time.
+  const nearKey = nearExact ? `${nearExact.lat.toFixed(2)},${nearExact.lon.toFixed(2)}` : '';
   const [field, setField] = useState<Field>('to');
   const [text, setText] = useState('');
-  const [found, setFound] = useState<{ query: string; places: Place[] } | null>(null);
+  const [found, setFound] = useState<{
+    query: string;
+    places: Place[];
+    problem?: string;
+  } | null>(null);
 
   const query = text.trim();
   const searchable = query.length >= 3;
@@ -222,20 +232,29 @@ export function TripSearch({ onDone }: { onDone(): void }) {
     if (!searchable) return;
     const controller = new AbortController();
     // Wait for a pause in typing before asking the shared search server.
+    const near = nearKey
+      ? { lat: Number(nearKey.split(',')[0]), lon: Number(nearKey.split(',')[1]) }
+      : null;
     const timer = setTimeout(() => {
       searchPlaces(query, near, controller.signal)
         .then((places) => setFound({ query, places }))
-        .catch(() => {
-          if (!controller.signal.aborted) setFound({ query, places: [] });
+        .catch((error) => {
+          if (controller.signal.aborted) return;
+          setFound({
+            query,
+            places: [],
+            problem: error instanceof Error ? error.message : 'Search is unavailable right now.',
+          });
         });
     }, 350);
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [searchable, query, near]);
+  }, [searchable, query, nearKey]);
 
   const results = searchable && found?.query === query ? found.places : null;
+  const problem = searchable && found?.query === query ? found.problem : undefined;
 
   const choose = (place: Place | null) => {
     setText('');
@@ -283,7 +302,7 @@ export function TripSearch({ onDone }: { onDone(): void }) {
 
       <View style={styles.results}>
         {field === 'from' && (
-          <Pressable style={styles.result} onPress={() => choose(null)}>
+          <Pressable accessibilityRole="button" style={styles.result} onPress={() => choose(null)}>
             <Text style={styles.resultName}>Current location</Text>
           </Pressable>
         )}
@@ -291,10 +310,14 @@ export function TripSearch({ onDone }: { onDone(): void }) {
           <Text style={styles.resultHint}>Type a place or an address.</Text>
         )}
         {searchable && results === null && <Text style={styles.resultHint}>Searching…</Text>}
-        {results?.length === 0 && <Text style={styles.resultHint}>No places found.</Text>}
+        {results?.length === 0 && (
+          <Text style={styles.resultHint}>{problem ?? 'No places found.'}</Text>
+        )}
         {results?.slice(0, 6).map((place, i) => (
           <Pressable
             key={`${place.lat},${place.lon},${i}`}
+            accessibilityRole="button"
+            accessibilityLabel={[place.name, place.detail].filter(Boolean).join(', ')}
             style={styles.result}
             onPress={() => choose(place)}>
             <Text style={styles.resultName} numberOfLines={1}>

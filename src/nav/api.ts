@@ -40,6 +40,28 @@ const OVERPASS_ROUNDS = 1;
  * (Browsers ignore this header and send their own.)
  */
 const IDENTIFY = { 'User-Agent': 'VeloBikeApp/0.1 (hackathon prototype)' };
+export const MAP_REQUEST_HEADERS = IDENTIFY;
+
+const BIKES_ALLOWED = new Set(['yes', 'designated', 'permissive']);
+/** Searches and route plans give up after this long, rather than spinning on bad Wi-Fi. */
+const SEARCH_TIMEOUT_MS = 8000;
+const ROUTE_TIMEOUT_MS = 15000;
+
+/** A signal that aborts when `outer` does, or after `ms`. */
+function withTimeout(ms: number, outer?: AbortSignal) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(new Error('timeout')), ms);
+  outer?.addEventListener('abort', () => controller.abort(outer.reason));
+  return { signal: controller.signal, done: () => clearTimeout(timer) };
+}
+
+/** A failed request explained in words a rider understands. */
+function networkProblem(error: unknown, what: string): Error {
+  if (error instanceof Error && /network request failed|timeout|aborted/i.test(error.message)) {
+    return new Error(`No internet connection, or the ${what} service is slow. Try again.`);
+  }
+  return error instanceof Error ? error : new Error(`The ${what} service failed.`);
+}
 
 // ---- Place search -----------------------------------------------------------------
 
@@ -53,8 +75,17 @@ export async function searchPlaces(
     params.set('lat', String(near.lat));
     params.set('lon', String(near.lon));
   }
-  const res = await fetch(`${PHOTON}?${params}`, { signal, headers: IDENTIFY });
-  if (!res.ok) throw new Error(`Place search failed (${res.status})`);
+  const limit = withTimeout(SEARCH_TIMEOUT_MS, signal);
+  let res: Response;
+  try {
+    res = await fetch(`${PHOTON}?${params}`, { signal: limit.signal, headers: IDENTIFY });
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    throw networkProblem(error, 'search');
+  } finally {
+    limit.done();
+  }
+  if (!res.ok) throw new Error(`Search is unavailable right now (${res.status}).`);
   const json = await res.json();
 
   const places: Place[] = (json.features ?? []).map((f: any): Place => {
@@ -147,10 +178,11 @@ export async function fetchRoute(
   bikeLanes: boolean,
   signal?: AbortSignal,
 ): Promise<Route> {
+  const limit = withTimeout(ROUTE_TIMEOUT_MS, signal);
   const res = await fetch(VALHALLA, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...IDENTIFY },
-    signal,
+    signal: limit.signal,
     body: JSON.stringify({
       locations: [
         { lat: from.lat, lon: from.lon },
@@ -162,7 +194,12 @@ export async function fetchRoute(
       },
       directions_options: { units: 'kilometers' },
     }),
-  });
+  })
+    .catch((error) => {
+      if (signal?.aborted) throw error;
+      throw networkProblem(error, 'routing');
+    })
+    .finally(() => limit.done());
   const json = await res.json().catch(() => null);
   if (!res.ok || !json?.trip?.legs?.length) {
     const reason = String(json?.error ?? '');
@@ -391,6 +428,8 @@ export async function fetchAlongRoute(
     } else if (element.type === 'way' && element.geometry?.length > 1) {
       const construction = tags.highway === 'construction';
       if (!construction && !THROUGH_ROADS.has(tags.highway)) continue;
+      // Closed to cars but open to bikes (a cycle street, a pedestrian zone) is no closure for us.
+      if (!construction && BIKES_ALLOWED.has(tags.bicycle)) continue;
       const points: LatLon[] = element.geometry.map((g: any) => ({ lat: g.lat, lon: g.lon }));
       // Only keep ones that really touch the route, not a parallel street.
       const mid = points[Math.floor(points.length / 2)];

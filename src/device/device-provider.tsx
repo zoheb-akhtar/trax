@@ -10,6 +10,8 @@ import {
   type ReactNode,
 } from 'react';
 
+import { setBikeSpeaker } from '@/lib/voice';
+
 import { HttpSource } from './http-source';
 import { MockSource } from './mock-source';
 import type { CameraId, DeviceMode, DeviceSnapshot } from './types';
@@ -32,6 +34,12 @@ type DeviceContextValue = DeviceSnapshot & {
   simulateTamper: (() => void) | null;
   simulateCrash: (() => void) | null;
   chirp(): void;
+  /** Says a line through the bike's speaker; false if there is none or it can't be reached. */
+  sayOnBike(text: string, urgent: boolean): Promise<boolean>;
+  /** Plays a recording through the bike's speaker. */
+  playOnBike(audio: Uint8Array): Promise<boolean>;
+  /** Whether the bike's speaker can be used right now */
+  hasSpeaker: boolean;
 };
 
 const STORAGE_KEY = 'velo.device-settings';
@@ -98,6 +106,16 @@ function ConnectedProvider({
     };
   }, [riding]);
 
+  // While riding, the rider is at the bike, so Velo talks to them through its speaker. While
+  // parked the owner is elsewhere: what Velo says to them stays on the phone, and only the
+  // deliberate warnings to whoever is at the bike (sayOnBike, playOnBike) use the speaker.
+  const hasSpeaker = snapshot.connection === 'connected' && snapshot.state.speaker;
+  const speakToRider = hasSpeaker && riding;
+  useEffect(() => {
+    setBikeSpeaker(speakToRider ? (text, urgent) => source.say(text, urgent) : null);
+    return () => setBikeSpeaker(null);
+  }, [speakToRider, source]);
+
   const value: DeviceContextValue = {
     ...snapshot,
     settings,
@@ -110,6 +128,9 @@ function ConnectedProvider({
     simulateTamper: source instanceof MockSource ? () => source.simulateTamper() : null,
     simulateCrash: source instanceof MockSource ? () => source.simulateCrash() : null,
     chirp: () => source.chirp(),
+    sayOnBike: (text, urgent) => source.say(text, urgent),
+    playOnBike: (audio) => source.play(audio),
+    hasSpeaker,
   };
 
   return <DeviceContext value={value}>{children}</DeviceContext>;

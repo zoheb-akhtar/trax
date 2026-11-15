@@ -1,3 +1,7 @@
+// Distances are formatted in the units chosen in settings, which the React Compiler can't
+// see as an input; memoizing here would leave old units on screen after a change.
+'use no memo';
+
 import { useState } from 'react';
 import { Linking, Modal, ScrollView, StyleSheet, View } from 'react-native';
 

@@ -90,6 +90,8 @@ export class NavStore {
   private offRouteTimer: ReturnType<typeof setTimeout> | null = null;
   /** The route whose surroundings (streets, parking, buildings) were last requested. */
   private loadedFor: Route | null = null;
+  /** The last position that came from the phone's GPS rather than a Preview ride. */
+  private lastRealFix: Position | null = null;
   private arrivalTimer: ReturnType<typeof setTimeout> | null = null;
 
   subscribe = (listener: () => void) => {
@@ -131,7 +133,12 @@ export class NavStore {
   clear() {
     this.planning?.abort();
     this.stopTracking();
-    this.set({ ...INITIAL, position: this.snapshot.position, bikeLanes: this.snapshot.bikeLanes });
+    this.set({ ...INITIAL, position: this.realPosition(), bikeLanes: this.snapshot.bikeLanes });
+  }
+
+  /** Where the phone really is: a Preview ride's made-up position must not outlive the preview. */
+  private realPosition() {
+    return this.snapshot.simulated ? this.lastRealFix : this.snapshot.position;
   }
 
   /** Finds where the phone is. Returns null if location is off or refused. */
@@ -143,7 +150,8 @@ export class NavStore {
         (await Location.getLastKnownPositionAsync()) ??
         (await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced }));
       const position = toPosition(fix);
-      this.set({ position });
+      this.lastRealFix = position;
+      if (!this.snapshot.simulated) this.set({ position });
       return position;
     } catch {
       return null;
@@ -237,12 +245,13 @@ export class NavStore {
       if (controller.signal.aborted) return;
       try {
         const found = await fetchAlongRoute(route, controller.signal);
-        if (controller.signal.aborted) return;
+        // A newer route (a reroute) may have replaced this one while it loaded.
+        if (controller.signal.aborted || this.loadedFor !== route) return;
         this.set({ ...found, extras: 'ready' });
         let scenery: Awaited<ReturnType<typeof fetchScenery>> | null = null;
         try {
           scenery = await fetchScenery(route, controller.signal);
-          if (!controller.signal.aborted) this.set(scenery);
+          if (!controller.signal.aborted && this.loadedFor === route) this.set(scenery);
         } catch {
           // The ride view works without buildings.
         }
@@ -263,7 +272,7 @@ export class NavStore {
     if (!this.snapshot.route) return;
     this.stopTracking();
     this.signalledAt = null;
-    this.set({ navigating: true, simulated: demo });
+    this.set({ navigating: true, simulated: demo, error: null });
 
     if (demo) {
       this.demoAlong = 0;
@@ -275,16 +284,31 @@ export class NavStore {
     const { granted } = await Location.requestForegroundPermissionsAsync().catch(() => ({
       granted: false,
     }));
-    if (!granted || !this.snapshot.navigating) return;
-    this.watcher = await Location.watchPositionAsync(
+    if (!this.snapshot.navigating) return;
+    if (!granted) {
+      this.set({
+        navigating: false,
+        error: 'Location is off, so Velo can’t follow you. Turn it on, or use Preview.',
+      });
+      return;
+    }
+    const watcher = await Location.watchPositionAsync(
       { accuracy: Location.Accuracy.BestForNavigation, timeInterval: 1000, distanceInterval: 2 },
-      (fix) => this.onPosition(toPosition(fix)),
+      (fix) => {
+        const position = toPosition(fix);
+        this.lastRealFix = position;
+        this.onPosition(position);
+      },
     );
+    // Stopped while the watcher was starting: don't leave it running.
+    if (!this.snapshot.navigating || this.snapshot.simulated) watcher.remove();
+    else this.watcher = watcher;
   }
 
   stop() {
+    const position = this.realPosition();
     this.stopTracking();
-    this.set({ navigating: false, simulated: false, progress: null });
+    this.set({ navigating: false, simulated: false, progress: null, position });
     this.updateProgress();
   }
 

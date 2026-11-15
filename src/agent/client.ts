@@ -20,7 +20,8 @@ export function makeClient(address: string, token: string) {
     baseURL: proxyUrl(address),
     apiKey: token.trim() || 'velo-proxy',
     dangerouslyAllowBrowser: true,
-    maxRetries: 1,
+    // No automatic retry: a slow request that is retried is sent, and billed, twice.
+    maxRetries: 0,
     timeout: REQUEST_TIMEOUT_MS,
   });
 }

@@ -8,6 +8,7 @@
     "@expo/ui": "~58.0.28",
     "@react-native-async-storage/async-storage": "2.2.0",
     "expo": "~58.0.25",
+    "expo-asset": "~58.0.21",
     "expo-audio": "~58.0.12",
     "expo-blur": "~58.0.6",
     "expo-constants": "~58.0.16",
@@ -22,6 +23,7 @@
     "expo-linear-gradient": "~58.0.4",
     "expo-linking": "~58.0.17",
     "expo-location": "~58.0.22",
+    "expo-notifications": "~58.1.9",
     "expo-router": "~58.0.31",
     "expo-speech": "~58.0.4",
     "expo-speech-recognition": "^58.0.1",
@@ -49,12 +51,13 @@
     "typescript": "~6.0.3"
   },
   "scripts": {
-    "start": "expo start",
+    "start": "expo start --go",
     "reset-project": "node ./scripts/reset-project.js",
-    "android": "expo run:android",
-    "ios": "expo run:ios",
+    "android": "expo start --go --android",
+    "ios": "expo start --go --ios",
     "web": "expo start --web",
-    "lint": "expo lint"
+    "lint": "expo lint",
+    "ios:build": "expo run:ios"
   },
   "private": true
 }

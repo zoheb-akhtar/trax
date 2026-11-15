@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import json
 import sys
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -52,6 +53,22 @@ def state(base: str) -> dict:
 def check(name: str, ok: bool, detail: str = "", warn_only: bool = False) -> bool:
     record("PASS" if ok else ("WARN" if warn_only else "FAIL"), name, "" if ok else detail)
     return ok
+
+
+def jpeg_size(data: bytes) -> tuple[int, int] | None:
+    """Width and height from a JPEG's frame header, or None if it can't be found."""
+    i = 2
+    while i + 9 < len(data):
+        if data[i] != 0xFF:
+            return None
+        marker = data[i + 1]
+        length = int.from_bytes(data[i + 2:i + 4], "big")
+        if marker in (0xC0, 0xC1, 0xC2):
+            height = int.from_bytes(data[i + 5:i + 7], "big")
+            width = int.from_bytes(data[i + 7:i + 9], "big")
+            return (width, height) if width and height else None
+        i += 2 + length
+    return None
 
 
 def main() -> int:
@@ -94,6 +111,46 @@ def main() -> int:
     check("answers fast enough to be polled 4 times a second", per_request < 0.2,
           f"{per_request * 1000:.0f} ms each: detection is probably blocking the server")
 
+    # The app keeps a camera stream open all the time. A server that handles one request at a
+    # time then never answers /state, so time it again with a stream held open.
+    stream_camera = cameras[0]
+    holder_done = threading.Event()
+
+    def hold_stream() -> None:
+        try:
+            with get(base, f"/stream?camera={stream_camera}") as response:
+                while not holder_done.is_set():
+                    if not response.read(4096):
+                        break
+        except Exception:  # noqa: BLE001 - the camera section reports stream problems
+            pass
+
+    holder = threading.Thread(target=hold_stream, daemon=True)
+    holder.start()
+    time.sleep(0.5)
+    try:
+        started = time.time()
+        for _ in range(4):
+            state(base)
+        busy = (time.time() - started) / 4
+        check("still answers /state while a camera stream is open", busy < 0.3,
+              f"{busy * 1000:.0f} ms each: use a threaded server (ThreadingHTTPServer, or Flask threaded=True)")
+    except Exception as error:  # noqa: BLE001
+        record("FAIL", "still answers /state while a camera stream is open",
+               f"{error}: use a threaded server (ThreadingHTTPServer, or Flask threaded=True)")
+    finally:
+        holder_done.set()
+
+    position = first.get("position")
+    if position is None:
+        record("WARN", "position is reported", "missing: find my bike can't show where the bike is")
+    else:
+        check("position is {lat, lon} in degrees",
+              isinstance(position, dict) and isinstance(position.get("lat"), (int, float))
+              and isinstance(position.get("lon"), (int, float))
+              and -90 <= position["lat"] <= 90 and -180 <= position["lon"] <= 180,
+              f"got {position!r}")
+
     # ---- Detections -----------------------------------------------------------------
     print("\nDetections (put a car, person or bike in view first)")
     samples = []
@@ -115,7 +172,12 @@ def main() -> int:
         )
         check("boxes are [x, y, width, height] as fractions 0-1", boxes_ok,
               "looks like pixels: divide by the frame width and height")
-        check('each has camera "front" or "rear"', all(d.get("camera", "front") in ("front", "rear") for d in seen))
+        check('each has camera "front" or "rear"', all(d.get("camera") in ("front", "rear") for d in seen),
+              "always send camera: without it a rear camera's cars are drawn in front of the bike")
+        check("ids are numbers", all(isinstance(d.get("id"), (int, float)) for d in seen),
+              "send a number for id", warn_only=True)
+        check("confidence is 0.5 or more", all((d.get("confidence") or 0) >= 0.5 for d in seen),
+              "the app ignores detections under 0.5", warn_only=True)
         ids = [{d.get("id") for d in sample} for sample in samples if sample]
         stable = len(ids) > 1 and all(None not in s for s in ids) and bool(set.intersection(*ids))
         check("ids stay the same from one reading to the next", stable,
@@ -129,6 +191,12 @@ def main() -> int:
                 data = response.read()
             check(f"GET /snapshot?camera={camera} returns a JPEG", data[:2] == b"\xff\xd8",
                   f"content type {response.headers.get('Content-Type')}")
+            size = jpeg_size(data)
+            if size:
+                width, height = size
+                check(f"the {camera} picture is 4:3", abs(width / height - 4 / 3) < 0.05,
+                      f"{width}x{height}: the app places boxes for a 4:3 picture (e.g. 640x480)",
+                      warn_only=True)
         except Exception as error:  # noqa: BLE001
             record("FAIL", f"GET /snapshot?camera={camera} returns a JPEG", str(error))
         try:
@@ -139,6 +207,22 @@ def main() -> int:
             check(f"the {camera} stream carries JPEG frames", b"\xff\xd8" in chunk)
         except Exception as error:  # noqa: BLE001
             record("FAIL", f"GET /stream?camera={camera} is MJPEG", str(error))
+
+    # ---- Speaker --------------------------------------------------------------------
+    print("\nSpeaker")
+    if first.get("speaker") is not True:
+        record("WARN", "speaker is reported", 'add "speaker": true to /state once /say works; until then the phone speaks')
+    else:
+        record("PASS", "speaker is reported")
+        try:
+            started = time.time()
+            post(base, "/say", {"text": "Velo speaker check.", "urgent": False})
+            took = time.time() - started
+            record("PASS", "POST /say is accepted")
+            check("POST /say answers at once (speech plays in the background)", took < 0.5,
+                  f"{took * 1000:.0f} ms: speak in a background thread", warn_only=True)
+        except Exception as error:  # noqa: BLE001
+            record("FAIL", "POST /say is accepted", str(error))
 
     # ---- Mode and alarm -------------------------------------------------------------
     print("\nMode and alarm")
@@ -175,7 +259,15 @@ def main() -> int:
         record("WARN", "events are reported", "none yet: arm it, move the bike, run this again")
     else:
         record("PASS", "events are reported")
+        check("each event has an id", all(e.get("id") not in (None, "") for e in events),
+              "without ids the app can't tell new events from old ones")
         check("each event has a unique id", len({e.get("id") for e in events}) == len(events))
+        check("ids include the time, so they stay unique after a reboot",
+              all(str(int(e.get("ts", 0))) in str(e.get("id")) for e in events),
+              'e.g. "evt-<ts>": a counter restarting at 1 makes new thefts look old', warn_only=True)
+        newest = max((e.get("ts", 0) for e in events), default=0)
+        check("event times are not in the future", newest <= time.time() * 1000 + 60000,
+              "the board's clock is ahead: set it (or sync it when online)", warn_only=True)
         check('kind is "tamper", "motion" or "crash"', all(e.get("kind") in ("tamper", "motion", "crash") for e in events))
         check("ts is Unix time in milliseconds",
               all(isinstance(e.get("ts"), (int, float)) and e["ts"] > 1e12 for e in events),

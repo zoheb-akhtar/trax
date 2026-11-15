@@ -25,6 +25,9 @@ import { HistoryProvider } from '@/history/history-provider';
 import { NavProvider } from '@/nav/nav-provider';
 import { RideUiProvider } from '@/ride-ui/ride-ui-provider';
 import { SecurityProvider } from '@/security/security-provider';
+import { PushWatcher } from '@/components/push-watcher';
+import { setUpNotifications } from '@/lib/notify';
+import { setUpAudio } from '@/lib/voice';
 import { SettingsProvider } from '@/settings/settings-provider';
 
 // Hold the splash screen until the typeface has loaded, so text never flashes in a fallback font.
@@ -42,6 +45,12 @@ export default function RootLayout() {
     Inter_700Bold,
   });
   const ready = loaded || error != null; // on a font failure, carry on with the system font
+
+  // Speech must play with the silent switch on, and duck music rather than stop it.
+  useEffect(() => {
+    setUpAudio();
+    setUpNotifications();
+  }, []);
 
   useEffect(() => {
     if (ready) SplashScreen.hideAsync();
@@ -66,6 +75,7 @@ export default function RootLayout() {
                     <CrashTakeover />
                     <VoiceAlerts />
                     <CoPilotMoments />
+                    <PushWatcher />
                   </AgentProvider>
                 </RideUiProvider>
               </SecurityProvider>

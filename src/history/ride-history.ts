@@ -270,7 +270,7 @@ export class RideHistory {
       return;
     }
     if (kind === 'frame') this.capturing = true;
-    savePicture(url, ride.id, `${ts}-${camera}.jpg`)
+    savePicture(url, ride.id, `${ts}-${camera}-${kind}.jpg`)
       .then((file) => {
         if (file || kind === 'close-pass') add(file);
       })
@@ -294,9 +294,28 @@ export class RideHistory {
 }
 
 /** How calm a ride was, 0-100, from close passes per kilometre. */
-export function safetyScore(ride: Ride) {
+export function safetyScore(ride: Pick<Ride, 'distance' | 'closePasses'>) {
   const km = Math.max(ride.distance / 1000, 0.3);
   return Math.round(Math.min(Math.max(100 - (ride.closePasses / km) * 14, 15), 100));
+}
+
+/**
+ * "This week" everywhere in the app: today and the six days before it, by the calendar.
+ * Returns the time at which that week starts.
+ */
+export function weekStart(now: number) {
+  const midnight = new Date(now);
+  midnight.setHours(0, 0, 0, 0);
+  return midnight.getTime() - 6 * 86400000;
+}
+
+/** The safety score of a set of rides taken together: all their close passes over all their distance. */
+export function combinedSafetyScore(rides: Ride[]) {
+  if (rides.length === 0) return null;
+  return safetyScore({
+    distance: rides.reduce((sum, ride) => sum + ride.distance, 0),
+    closePasses: rides.reduce((sum, ride) => sum + ride.closePasses, 0),
+  });
 }
 
 export function safetyLabel(score: number) {

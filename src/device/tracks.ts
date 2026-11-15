@@ -1,8 +1,14 @@
 import { isCloseVehicle, toWorld } from './geometry';
 import type { Detection } from './types';
 
-/** A track with no fresh detection for this long counts as lost. */
-const STALE_AFTER = 0.45;
+/**
+ * A track with no fresh detection for this long counts as lost. Over Wi-Fi, with a detector
+ * running a few times a second, updates can be most of a second apart.
+ */
+const STALE_AFTER = 1.0;
+/** Speeds measured from jittery boxes are capped at this (m/s), and blended in gently. */
+const MAX_SPEED_MPS = 20;
+const SPEED_BLEND = 0.35;
 /** How long an object that is simply lost (not beside the bike) takes to fade out. */
 const FADE_SECONDS = 1.3;
 
@@ -39,6 +45,8 @@ type Track = {
   alpha: number;
   /** When it was lost into the gap beside the bike; null while seen or merely fading */
   heldSince: number | null;
+  /** The box last received, to tell a repeated report from a real new position */
+  box: string;
 };
 
 export type SceneObject = {
@@ -165,15 +173,26 @@ export class TrackSmoother {
         lastSeen: now,
         alpha: 0,
         heldSince: null,
+        box: d.box.join(','),
       });
       return;
     }
+    // A slow detector repeats its last result between frames. That says the object is still
+    // there, not that it has stopped, so it must not drag the speed estimate to zero.
+    const box = d.box.join(',');
+    if (box === existing.box && existing.heldSince === null) {
+      existing.lastSeen = now;
+      return;
+    }
+    existing.box = box;
     const elapsed = Math.max(now - existing.lastSeen, 0.03);
     // After a spell out of sight the old speed estimate is stale, so don't blend with it.
-    const blend = existing.heldSince !== null || elapsed > 1 ? 0 : 0.5;
+    const blend = existing.heldSince !== null || elapsed > 1.5 ? 0 : SPEED_BLEND;
     if (blend > 0) {
-      existing.vx += ((p.x - existing.tx) / elapsed - existing.vx) * blend;
-      existing.vz += ((p.z - existing.tz) / elapsed - existing.vz) * blend;
+      const vx = clamp((p.x - existing.tx) / elapsed, MAX_SPEED_MPS);
+      const vz = clamp((p.z - existing.tz) / elapsed, MAX_SPEED_MPS);
+      existing.vx += (vx - existing.vx) * blend;
+      existing.vz += (vz - existing.vz) * blend;
     }
     existing.tx = p.x;
     existing.tz = p.z;

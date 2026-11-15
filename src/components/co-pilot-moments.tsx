@@ -20,16 +20,16 @@ const JUST_ENDED_MS = 20000;
  * agent; if it fails, nothing is said. Renders nothing.
  */
 export function CoPilotMoments() {
-  const { agentEnabled, agentUrl, agentToken } = useSettings();
-  const { announce } = useAgent();
+  const { loaded, agentEnabled, agentUrl, agentToken } = useSettings();
+  const { announce, routedByAgentRecently } = useAgent();
   const trip = useNav();
   const { rides } = useRideHistory();
-  const on = agentEnabled && agentUrl.trim() !== '';
+  const on = loaded && agentEnabled && agentUrl.trim() !== '';
 
   // Effects below run later than the render that scheduled them, so they read through refs.
-  const latest = useRef({ trip, rides, announce, agentUrl, agentToken });
+  const latest = useRef({ trip, rides, announce, routedByAgentRecently, agentUrl, agentToken });
   useEffect(() => {
-    latest.current = { trip, rides, announce, agentUrl, agentToken };
+    latest.current = { trip, rides, announce, routedByAgentRecently, agentUrl, agentToken };
   });
 
   // ---- Route briefing: once per destination, when its route is ready -------------------
@@ -45,6 +45,8 @@ export function CoPilotMoments() {
       if (briefed.current.has(routeKey)) return;
       briefed.current.add(routeKey);
       const now = latest.current;
+      // The agent planned this route itself and has just described it.
+      if (now.routedByAgentRecently()) return;
       const facts = routeFacts(now.trip);
       if (!facts) return;
       try {

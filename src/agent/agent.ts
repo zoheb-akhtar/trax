@@ -26,6 +26,7 @@ export async function runTurn({ client, history, userText, world, onTool }: Turn
   history.push({ role: 'user', content: `${stateSnapshot(world())}\n\nOwner: ${userText}` });
 
   let spoken = '';
+  let finished = false;
   for (let round = 0; round < MAX_ROUNDS; round++) {
     const response = await client.beta.messages.create({
       model: MODEL,
@@ -47,7 +48,10 @@ export async function runTurn({ client, history, userText, world, onTool }: Turn
       .trim();
 
     if (response.stop_reason === 'refusal') return "Sorry, I can't help with that.";
-    if (response.stop_reason !== 'tool_use') break;
+    if (response.stop_reason !== 'tool_use') {
+      finished = true;
+      break;
+    }
 
     const calls = response.content.filter(
       (block): block is Anthropic.Beta.BetaToolUseBlock => block.type === 'tool_use',
@@ -76,7 +80,8 @@ export async function runTurn({ client, history, userText, world, onTool }: Turn
     history.push({ role: 'user', content: results });
   }
 
-  return spoken || "I couldn't finish that. Try asking again.";
+  // Out of rounds mid-way: the last text is a preamble ("let me check…"), not an answer.
+  return (finished && spoken) || "I couldn't finish that. Try asking again.";
 }
 
 /** One sentence describing a picture taken as the alarm went off. Throws if the call fails. */
@@ -140,6 +145,9 @@ export function wasRejected(error: unknown) {
 
 /** A short explanation of a failed request, suitable for reading aloud. */
 export function explainError(error: unknown) {
+  if (error instanceof Anthropic.APIConnectionTimeoutError) {
+    return 'That took too long. Try asking again.';
+  }
   if (error instanceof Anthropic.APIConnectionError) {
     return "I can't reach the Velo agent server. Check its address in the Device tab.";
   }

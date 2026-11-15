@@ -38,7 +38,7 @@ export function canListen() {
 export type ListenResult =
   | { ok: true; text: string }
   /** denied: no microphone or speech permission. nothing: no words were heard. */
-  | { ok: false; reason: 'denied' | 'nothing' | 'failed' };
+  | { ok: false; reason: 'denied' | 'nothing' | 'cancelled' | 'failed' };
 
 export type Listening = {
   /** Stop listening and use what has been heard so far. */
@@ -61,7 +61,7 @@ export function listen(onHeard: (text: string) => void): Listening {
     if (!speech) return { ok: false, reason: 'failed' };
     const permission = await speech.requestPermissionsAsync();
     if (!permission.granted) return { ok: false, reason: 'denied' };
-    if (cancelled) return { ok: false, reason: 'nothing' };
+    if (cancelled) return { ok: false, reason: 'cancelled' };
 
     return new Promise<ListenResult>((resolve) => {
       let heard = '';
@@ -79,7 +79,7 @@ export function listen(onHeard: (text: string) => void): Listening {
         speech.addListener('end', () => {
           subscriptions.forEach((subscription) => subscription.remove());
           const text = heard.trim();
-          if (cancelled) resolve({ ok: false, reason: 'nothing' });
+          if (cancelled) resolve({ ok: false, reason: 'cancelled' });
           else if (text) resolve({ ok: true, text });
           else resolve({ ok: false, reason: failed ? 'failed' : 'nothing' });
         }),

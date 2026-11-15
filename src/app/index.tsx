@@ -1,3 +1,7 @@
+// Distances are formatted in the units chosen in settings, which the React Compiler can't
+// see as an input; memoizing here would leave old units on screen after a change.
+'use no memo';
+
 import { SymbolView } from 'expo-symbols';
 import { useEffect, useMemo, useState } from 'react';
 import { Modal, Pressable, StyleSheet, Text, View } from 'react-native';
@@ -291,6 +295,15 @@ export default function RideScreen() {
                   />
                 </>
               )}
+            </View>
+          ) : navigating ? (
+            // Started, but no position yet (indoors, or GPS still warming up).
+            <View style={styles.bar}>
+              <Text style={styles.barValue}>Waiting for GPS…</Text>
+              <Text style={styles.barDetail} numberOfLines={1}>
+                Indoors? Use Preview.
+              </Text>
+              <Button title="End route" size="small" variant="secondary" onPress={() => nav.stop()} />
             </View>
           ) : trip.status !== 'idle' ? (
             <TripCard />

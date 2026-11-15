@@ -77,6 +77,15 @@ export class MockSource extends SnapshotStore implements DeviceSource {
 
   chirp() {}
 
+  // The simulated device has no speaker: everything is said by the phone.
+  async say() {
+    return false;
+  }
+
+  async play() {
+    return false;
+  }
+
   /** Pretends the rider has fallen. */
   simulateCrash() {
     const ts = Date.now();

@@ -5,6 +5,7 @@ import {
   useState,
   type ReactNode,
 } from 'react';
+import { useIsFocused } from 'expo-router';
 import { PanResponder, Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, {
   Circle,
@@ -1083,7 +1084,25 @@ const LOOK_HOLD_S = 8;
 const PAN_M_PER_PT = 0.14;
 
 /** Steps the scene on every display frame and returns what to draw. */
-function useSceneFrame(props: Props, lookAround: LookAround): Frame {
+/** The scene is drawn at most this often; 30 a second is smooth and spares the phone. */
+const FRAME_S = 1 / 30;
+
+function sameFrame(a: Frame, b: Frame) {
+  if (a.objects.length > 0 || b.objects.length > 0) return false;
+  if (a.looking !== b.looking || a.dashOffset !== b.dashOffset) return false;
+  if (!a.pose || !b.pose) return a.pose === b.pose;
+  return (
+    Math.abs(a.pose.east - b.pose.east) < 0.01 &&
+    Math.abs(a.pose.north - b.pose.north) < 0.01 &&
+    Math.abs(a.pose.heading - b.pose.heading) < 0.05
+  );
+}
+
+function useSceneFrame(
+  props: Props,
+  lookAround: LookAround,
+  focused: { current: boolean },
+): Frame {
   const [frame, setFrame] = useState<Frame>({
     objects: [],
     dashOffset: 0,
@@ -1101,8 +1120,16 @@ function useSceneFrame(props: Props, lookAround: LookAround): Frame {
     let last: number | null = null;
     let pose: Pose | null = null;
     let poseGround: Ground | null = null;
+    let shown: Frame | null = null;
     let handle = requestAnimationFrame(function tick(timeMs) {
+      handle = requestAnimationFrame(tick);
+      // Another tab is showing: draw nothing, and start afresh on return.
+      if (!focused.current) {
+        last = null;
+        return;
+      }
       const now = timeMs / 1000;
+      if (last != null && now - last < FRAME_S) return;
       const dt = last == null ? 0 : Math.min(now - last, 0.1);
       last = now;
       const { detections, speedKmh, ground, at } = latest.current;
@@ -1130,16 +1157,19 @@ function useSceneFrame(props: Props, lookAround: LookAround): Frame {
       // Looking around: the view may have been dragged away from the bike.
       const seen = lookAround.view(pose, dt);
 
-      setFrame({
+      const next: Frame = {
         objects: smoother.step(detections, now, dt),
         dashOffset,
         pose: seen.pose,
         looking: seen.looking,
-      });
-      handle = requestAnimationFrame(tick);
+      };
+      // Standing still with nothing around: the picture is the same, so don't redraw it.
+      if (shown && sameFrame(shown, next)) return;
+      shown = next;
+      setFrame(next);
     });
     return () => cancelAnimationFrame(handle);
-  }, [lookAround]);
+  }, [lookAround, focused]);
 
   return frame;
 }
@@ -1231,7 +1261,13 @@ function twist(touches: readonly { pageX: number; pageY: number }[]) {
 export function ProximityScene(props: Props) {
   const [size, setSize] = useState({ width: 0, height: 0 });
   const [lookAround] = useState(() => new LookAround());
-  const frame = useSceneFrame(props, lookAround);
+  // The tabs keep this screen alive in the background; it only animates while showing.
+  const isFocused = useIsFocused();
+  const focused = useRef(isFocused);
+  useEffect(() => {
+    focused.current = isFocused;
+  }, [isFocused]);
+  const frame = useSceneFrame(props, lookAround, focused);
   const hasGround = Boolean(props.ground);
   useEffect(() => {
     lookAround.setEnabled(hasGround);
