@@ -8,7 +8,7 @@ type SecurityContextValue = SecuritySnapshot & {
   deleteEntry(id: string): void;
   clearEntries(): void;
   describeEntry(id: string, description: string): void;
-  /** Sets Velo's alarm off from the phone, and notes it in the log. */
+  /** Sets Trax's alarm off from the phone, and notes it in the log. */
   soundAlarm(): void;
 };
 

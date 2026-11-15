@@ -81,7 +81,7 @@ type Props = {
  * Records one spoken question and has the proxy turn it into text. Mounted only while
  * listening; renders nothing. It stops by itself when the owner stops talking.
  *
- * This is how Velo hears in Expo Go, where on-device speech recognition isn't available.
+ * This is how Trax hears in Expo Go, where on-device speech recognition isn't available.
  */
 export function VoiceRecorder({ address, token, controlRef, onStopped, onDone }: Props) {
   const recorder = useAudioRecorder({ ...RecordingPresets.HIGH_QUALITY, isMeteringEnabled: true });
@@ -116,7 +116,7 @@ export function VoiceRecorder({ address, token, controlRef, onStopped, onDone }:
       onStopped();
       const response = await fetch(`${proxyUrl(address)}/v1/transcribe`, {
         method: 'POST',
-        headers: { 'content-type': 'audio/m4a', 'x-api-key': cleanToken(token) || 'velo-proxy' },
+        headers: { 'content-type': 'audio/m4a', 'x-api-key': cleanToken(token) || 'trax-proxy' },
         body: await new File(uri).bytes(),
         signal: abort.signal,
       });

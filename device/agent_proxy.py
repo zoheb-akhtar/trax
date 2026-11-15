@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Velo agent proxy.
+Trax agent proxy.
 
 The phone app's AI agent calls Claude through this server, so the Anthropic API key stays
 on this machine and is never bundled into the app. It forwards exactly one thing:
@@ -15,7 +15,7 @@ is sent anywhere), and needs one extra package:
 Run (the key comes from your environment; it is never printed or logged):
 
     export ANTHROPIC_API_KEY=...            # in your own terminal
-    export VELO_PROXY_TOKEN=some-words      # optional: the app must send this to use the proxy
+    export TRAX_PROXY_TOKEN=some-words      # optional: the app must send this to use the proxy
     device/.venv/bin/python device/agent_proxy.py
 
 Then enter this machine's address and port 8787 in the app's Device tab, under AI agent.
@@ -41,23 +41,23 @@ UPSTREAM = "https://api.anthropic.com/v1/messages"
 DEFAULT_VERSION = "2023-06-01"
 MAX_BODY_BYTES = 12 * 1024 * 1024  # room for one camera picture
 UPSTREAM_TIMEOUT_S = 120
-# Only Velo's own requests are forwarded: these models, and no huge answers.
+# Only Trax's own requests are forwarded: these models, and no huge answers.
 ALLOWED_MODELS = {"claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"}
 MAX_OUTPUT_TOKENS = 16000
 # The password other devices on the network must send. Kept in a file beside this script so it
-# survives restarts (and isn't committed); VELO_PROXY_TOKEN overrides it.
+# survives restarts (and isn't committed); TRAX_PROXY_TOKEN overrides it.
 # Speech to text. "base.en" is small and quick on a laptop; "small.en" is more accurate, slower.
-WHISPER_MODEL = os.environ.get("VELO_WHISPER_MODEL", "base.en")
+WHISPER_MODEL = os.environ.get("TRAX_WHISPER_MODEL") or os.environ.get("VELO_WHISPER_MODEL") or "base.en"
 MAX_AUDIO_BYTES = 8 * 1024 * 1024
-# Words the model should expect, so "Velo" is not heard as "fellow".
-SPEECH_HINT = "Velo. Arm the bike. Disarm the bike. Anything behind me? Show the rear camera."
+# Words the model should expect, so "Trax" is not heard as "tracks".
+SPEECH_HINT = "Trax. Arm the bike. Disarm the bike. Anything behind me? Show the rear camera."
 
 TOKEN_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".proxy-token")
 LOCAL_ADDRESSES = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
 
 
 def proxy_token() -> str:
-    token = os.environ.get("VELO_PROXY_TOKEN", "").strip()
+    token = (os.environ.get("TRAX_PROXY_TOKEN") or os.environ.get("VELO_PROXY_TOKEN") or "").strip()
     if token:
         return token
     try:
@@ -66,7 +66,7 @@ def proxy_token() -> str:
     except OSError:
         token = ""
     if not token:
-        token = f"velo-{secrets.randbelow(9000) + 1000}"
+        token = f"trax-{secrets.randbelow(9000) + 1000}"
         with open(TOKEN_FILE, "w") as file:
             file.write(token + "\n")
     return token
@@ -162,8 +162,8 @@ class Watcher:
             for event in fresh:
                 if event.get("kind") == "tamper":
                     problem = self.push(
-                        "Velo: bike moved",
-                        "Your bike was moved and its alarm is sounding. Open Velo to see the camera.",
+                        "Trax: bike moved",
+                        "Your bike was moved and its alarm is sounding. Open Trax to see the camera.",
                         "tamper",
                     )
                     print(f"  Push notification -> {'sent' if not problem else 'not sent: ' + problem}")
@@ -312,7 +312,7 @@ class Handler(BaseHTTPRequestHandler):
         if not isinstance(message, dict) or WATCHER is None:
             return self._error(400, "request body is not an object")
         if message.get("test"):
-            problem = WATCHER.push("Velo", "This is a test notification. Alerts will look like this.", "test")
+            problem = WATCHER.push("Trax", "This is a test notification. Alerts will look like this.", "test")
             if problem:
                 return self._error(502, problem)
             return self._send(200, json.dumps({"ok": True}).encode())
@@ -345,13 +345,13 @@ class Handler(BaseHTTPRequestHandler):
         if length is None:
             return self._error(413, "request body missing or too large")
         body = self.rfile.read(length)
-        # Forward only what Velo itself would send, so the key can't be used for anything else.
+        # Forward only what Trax itself would send, so the key can't be used for anything else.
         try:
             message = json.loads(body)
         except ValueError:
             return self._error(400, "request body is not JSON")
         if not isinstance(message, dict) or message.get("model") not in ALLOWED_MODELS:
-            return self._error(400, "this proxy only forwards requests for Velo's models")
+            return self._error(400, "this proxy only forwards requests for Trax's models")
         if message.get("stream"):
             return self._error(400, "this proxy does not forward streaming requests")
         message["max_tokens"] = min(int(message.get("max_tokens") or 1024), MAX_OUTPUT_TOKENS)
@@ -391,7 +391,7 @@ def lan_address() -> str | None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Velo agent proxy")
+    parser = argparse.ArgumentParser(description="Trax agent proxy")
     parser.add_argument("--port", type=int, default=8787)
     args = parser.parse_args()
 
@@ -399,7 +399,7 @@ def main() -> None:
     TOKEN = proxy_token()
     server = ThreadingHTTPServer(("0.0.0.0", args.port), Handler)
     server.daemon_threads = True
-    print(f"Velo agent proxy on port {args.port}")
+    print(f"Trax agent proxy on port {args.port}")
     address = lan_address()
     if address:
         print(f"  In the app's Device tab, AI agent address:  {address}:{args.port}")

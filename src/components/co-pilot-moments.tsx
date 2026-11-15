@@ -15,7 +15,7 @@ const BRIEFING_WAIT_MS = 12000;
 const JUST_ENDED_MS = 20000;
 
 /**
- * The moments when Velo speaks up without being asked: a one-sentence briefing when a route
+ * The moments when Trax speaks up without being asked: a one-sentence briefing when a route
  * is planned, and a one-sentence debrief when a ride ends. Each is one request to the AI
  * agent; if it fails, nothing is said. Renders nothing.
  */

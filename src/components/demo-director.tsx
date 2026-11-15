@@ -14,7 +14,7 @@ const LABELS = ['Route', 'Car behind', 'Arm', 'Bike moved', 'Recap'];
 /**
  * One tap per beat of the live demo, so the presenter can keep talking: plan a route by
  * voice, ride with a car closing in, arm the bike, someone moves it, then catch up.
- * Shown only with the built-in pretend bike or the laptop test server, never a real Velo.
+ * Shown only with the built-in pretend bike or the laptop test server, never a real Trax.
  * Tap to run the next beat; press and hold to start again.
  */
 export function DemoDirector({ riding }: { riding: boolean }) {
@@ -53,7 +53,7 @@ export function DemoDirector({ riding }: { riding: boolean }) {
       () => {
         nav.stop();
         device.setMode('security');
-        say('Velo is armed. I’ll watch the bike.', true);
+        say('Trax is armed. I’ll watch the bike.', true);
       },
       () => device.simulateTamper?.(),
       () => {
@@ -107,7 +107,7 @@ export function DemoDirector({ riding }: { riding: boolean }) {
 const styles = StyleSheet.create({
   wrap: { position: 'absolute', height: 52, justifyContent: 'center' },
   left: { left: Spacing.three },
-  // On the parked home screen, next to the "Velo" wordmark.
+  // On the parked home screen, next to the "Trax" wordmark.
   besideName: { left: 104 },
   pill: {
     flexDirection: 'row',

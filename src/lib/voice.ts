@@ -4,7 +4,7 @@ import * as Speech from 'expo-speech';
 let enabled = true;
 let lastSpoke = 0;
 /**
- * True while the microphone is open, so Velo doesn't talk over the owner or record itself.
+ * True while the microphone is open, so Trax doesn't talk over the owner or record itself.
  * Urgent lines (a vehicle close, the alarm) are still said: safety comes before a clean recording.
  */
 let muted = false;
@@ -14,7 +14,7 @@ export function setMuted(on: boolean) {
   if (on) Speech.stop().catch(() => {});
 }
 
-/** Where Velo's voice comes from: the bike's speaker, the phone, or both. */
+/** Where Trax's voice comes from: the bike's speaker, the phone, or both. */
 export type SpeakFrom = 'bike' | 'phone' | 'both';
 let speakFrom: SpeakFrom = 'bike';
 /** Sends a line to the bike's speaker; set while a device with a speaker is connected. */
@@ -30,7 +30,7 @@ export function setBikeSpeaker(speaker: BikeSpeaker | null) {
 }
 
 /**
- * The voice Velo speaks with: Zoe (Premium) if the phone has it, else the best English voice
+ * The voice Trax speaks with: Zoe (Premium) if the phone has it, else the best English voice
  * installed. iOS only hands out its better voices to apps that ask for them by name.
  * To install Zoe: Settings > Accessibility > Spoken Content > Voices > English > Zoe (Premium).
  */
@@ -114,7 +114,7 @@ export function setUpAudio() {
 }
 
 /**
- * Says a line after whatever is being said now, without interrupting it. For Velo speaking up
+ * Says a line after whatever is being said now, without interrupting it. For Trax speaking up
  * by itself (a briefing, a debrief), which must not cut across an answer or a warning.
  */
 export function sayAfter(text: string): boolean {

@@ -49,7 +49,7 @@ type ResultContent = Anthropic.Beta.BetaToolResultBlockParam['content'];
 export type ToolOutcome = {
   content: ResultContent;
   isError?: boolean;
-  /** Short past-tense line shown to the owner, e.g. "Armed Velo" */
+  /** Short past-tense line shown to the owner, e.g. "Armed Trax" */
   label: string;
 };
 
@@ -71,7 +71,7 @@ const DEFINITIONS: Tool[] = [
   },
   {
     name: 'get_device_status',
-    description: 'Whether Velo is armed or in ride mode, connection, battery, whether the alarm is sounding, and where the bike is parked.',
+    description: 'Whether Trax is armed or in ride mode, connection, battery, whether the alarm is sounding, and where the bike is parked.',
     input_schema: NO_INPUT,
   },
   {
@@ -87,7 +87,7 @@ const DEFINITIONS: Tool[] = [
   {
     name: 'look_through_camera',
     description:
-      'Takes one picture from a Velo camera and returns it so you can describe the scene. Use when the owner asks what a camera can see, or who is near the bike. The picture is sent to you only when you call this.',
+      'Takes one picture from a Trax camera and returns it so you can describe the scene. Use when the owner asks what a camera can see, or who is near the bike. The picture is sent to you only when you call this.',
     input_schema: { type: 'object', properties: { camera: CAMERA }, required: ['camera'], additionalProperties: false },
   },
   {
@@ -112,12 +112,12 @@ const DEFINITIONS: Tool[] = [
   },
   {
     name: 'arm_bike',
-    description: 'Parks and arms Velo, so the alarm sounds if the bike is moved. This ends the current ride. The app asks the owner to confirm if the bike is still moving.',
+    description: 'Parks and arms Trax, so the alarm sounds if the bike is moved. This ends the current ride. The app asks the owner to confirm if the bike is still moving.',
     input_schema: NO_INPUT,
   },
   {
     name: 'disarm_bike',
-    description: 'Disarms Velo and starts a ride. The app asks the owner to confirm first.',
+    description: 'Disarms Trax and starts a ride. The app asks the owner to confirm first.',
     input_schema: NO_INPUT,
   },
   {
@@ -127,13 +127,13 @@ const DEFINITIONS: Tool[] = [
   },
   {
     name: 'sound_alarm',
-    description: "Sets off Velo's alarm on purpose. The app asks the owner to confirm first.",
+    description: "Sets off Trax's alarm on purpose. The app asks the owner to confirm first.",
     input_schema: NO_INPUT,
   },
   {
     name: 'find_my_bike',
     description:
-      'Makes Velo beep and flash briefly, to spot the bike when it is nearby. To learn where the bike is, use locate_bike instead.',
+      'Makes Trax beep and flash briefly, to spot the bike when it is nearby. To learn where the bike is, use locate_bike instead.',
     input_schema: NO_INPUT,
   },
   {
@@ -202,9 +202,9 @@ function describe(d: Detection) {
 function surroundings(world: AgentWorld) {
   const { state, connection } = world.device;
   if (connection === 'offline' || connection === 'connecting') {
-    return 'Velo is not connected, so nothing is known about the surroundings.';
+    return 'Trax is not connected, so nothing is known about the surroundings.';
   }
-  if (state.mode !== 'ride') return 'Velo is parked; traffic detection runs only while riding.';
+  if (state.mode !== 'ride') return 'Trax is parked; traffic detection runs only while riding.';
   const seen = mergeCyclists(state.detections).sort((a, b) => toWorld(a).distance - toWorld(b).distance);
   return seen.length ? seen.map(describe).join('; ') : 'nothing detected by either camera';
 }
@@ -244,7 +244,7 @@ const clock = (ts: number) => new Date(ts).toLocaleTimeString([], { hour: 'numer
 function deviceStatus(world: AgentWorld) {
   const { state, connection } = world.device;
   const { parked } = world.security;
-  // Without a live link, the mode and alarm are only what Velo last reported.
+  // Without a live link, the mode and alarm are only what Trax last reported.
   const live = connection === 'connected' || connection === 'simulated';
   const known = live ? '' : 'last known before losing the connection: ';
   return [
@@ -260,7 +260,7 @@ function deviceStatus(world: AgentWorld) {
 
 function bikeLocation(world: AgentWorld) {
   const { lastSeen, parked } = world.security;
-  if (!lastSeen) return "The bike's position is not known: Velo has not reported a GPS fix.";
+  if (!lastSeen) return "The bike's position is not known: Trax has not reported a GPS fix.";
   const live = world.device.connection === 'connected';
   const parts = [
     `${live ? 'The bike is' : 'The bike was last'} ${lastSeen.place ? `near ${lastSeen.place}` : 'at a known position'}`,
@@ -291,7 +291,7 @@ const EVENT: Record<SecurityEntry['kind'], string> = {
 /** The text placed at the top of every message from the owner. */
 export function stateSnapshot(world: AgentWorld) {
   return [
-    `[Velo state at ${clock(Date.now())}]`,
+    `[Trax state at ${clock(Date.now())}]`,
     `Device: ${deviceStatus(world)}`,
     `Around the bike (camera estimates): ${surroundings(world)}`,
     `Ride: ${rideStatus(world)}`,
@@ -341,7 +341,7 @@ export async function runTool(name: string, input: unknown, world: AgentWorld): 
     case 'get_ride_status':
       return ok('Checked the ride', rideStatus(world));
     case 'get_device_status':
-      return ok('Checked Velo', deviceStatus(world));
+      return ok('Checked Trax', deviceStatus(world));
 
     case 'get_security_events': {
       const lines = world.security.entries.slice(0, 12).map((e) => {
@@ -372,7 +372,7 @@ export async function runTool(name: string, input: unknown, world: AgentWorld): 
       const camera: CameraId = args.camera === 'front' ? 'front' : 'rear';
       const label = `Looked through the ${camera} camera`;
       const url = device.connection === 'connected' ? device.snapshotUrlFor(camera) : null;
-      if (!url) return failed(label, 'No camera picture is available: Velo is not connected, or it is the simulated device.');
+      if (!url) return failed(label, 'No camera picture is available: Trax is not connected, or it is the simulated device.');
       try {
         const data = await pictureAsBase64(url);
         return {
@@ -413,8 +413,8 @@ export async function runTool(name: string, input: unknown, world: AgentWorld): 
       if (!nav.getSnapshot().route) return failed('Start navigation', 'There is no planned route. Set a destination first.');
       if (device.state.mode !== 'ride') {
         // Starting a ride disarms the bike, which always needs the owner's yes.
-        if (!(await world.confirm('Disarm Velo and start the ride?'))) {
-          return ok('Navigation not started', 'The owner declined; Velo is still armed and guidance has not started.');
+        if (!(await world.confirm('Disarm Trax and start the ride?'))) {
+          return ok('Navigation not started', 'The owner declined; Trax is still armed and guidance has not started.');
         }
         device.setMode('ride');
       }
@@ -427,21 +427,21 @@ export async function runTool(name: string, input: unknown, world: AgentWorld): 
       return ok('Stopped navigation', 'Guidance stopped and the route cleared.');
 
     case 'arm_bike': {
-      if (device.state.mode === 'security') return ok('Velo is already armed', 'Velo was already armed.');
+      if (device.state.mode === 'security') return ok('Trax is already armed', 'Trax was already armed.');
       const moving = (device.state.speedKmh ?? 0) > 5;
-      if (moving && !(await world.confirm('You are still moving. End the ride and arm Velo?'))) {
-        return ok('Arming cancelled', 'The owner declined; Velo was not armed.');
+      if (moving && !(await world.confirm('You are still moving. End the ride and arm Trax?'))) {
+        return ok('Arming cancelled', 'The owner declined; Trax was not armed.');
       }
       nav.stop();
       device.setMode('security');
-      return ok('Armed Velo', 'Velo is now parked and armed.');
+      return ok('Armed Trax', 'Trax is now parked and armed.');
     }
 
     case 'disarm_bike': {
-      if (device.state.mode === 'ride') return ok('Velo is already disarmed', 'Velo was already disarmed.');
-      if (!(await world.confirm('Disarm Velo?'))) return ok('Disarm cancelled', 'The owner declined; Velo is still armed.');
+      if (device.state.mode === 'ride') return ok('Trax is already disarmed', 'Trax was already disarmed.');
+      if (!(await world.confirm('Disarm Trax?'))) return ok('Disarm cancelled', 'The owner declined; Trax is still armed.');
       device.setMode('ride');
-      return ok('Disarmed Velo', 'Velo is disarmed and in ride mode.');
+      return ok('Disarmed Trax', 'Trax is disarmed and in ride mode.');
     }
 
     case 'silence_alarm':
@@ -450,22 +450,22 @@ export async function runTool(name: string, input: unknown, world: AgentWorld): 
       return ok('Silenced the alarm', 'The alarm has been silenced.');
 
     case 'sound_alarm': {
-      if (!(await world.confirm("Sound Velo's alarm now?"))) return ok('Alarm cancelled', 'The owner declined; the alarm was not sounded.');
+      if (!(await world.confirm("Sound Trax's alarm now?"))) return ok('Alarm cancelled', 'The owner declined; the alarm was not sounded.');
       world.security.soundAlarm();
       return ok('Sounded the alarm', 'The alarm is sounding.');
     }
 
     case 'find_my_bike':
-      if (device.connection !== 'connected') return failed('Find my bike', 'Velo is not connected, so it cannot be made to beep.');
+      if (device.connection !== 'connected') return failed('Find my bike', 'Trax is not connected, so it cannot be made to beep.');
       device.chirp();
-      return ok('Made Velo beep', 'Velo was told to beep and flash.');
+      return ok('Made Trax beep', 'Trax was told to beep and flash.');
 
     case 'locate_bike':
       return ok('Located the bike', bikeLocation(world));
 
     case 'show_bike_on_map':
       if (!world.security.lastSeen) {
-        return failed('Show the bike on the map', "The bike's position is not known: Velo has not reported a GPS fix.");
+        return failed('Show the bike on the map', "The bike's position is not known: Trax has not reported a GPS fix.");
       }
       world.ui.openScreen('security');
       return ok('Showing the bike on the map', `The map is showing. ${bikeLocation(world)}`);
@@ -474,7 +474,7 @@ export async function runTool(name: string, input: unknown, world: AgentWorld): 
       const message = String(args.message ?? '').trim().slice(0, 300);
       if (!message) return failed('Speak through the bike', 'No message was given.');
       if (!device.hasSpeaker) {
-        return failed('Speak through the bike', 'The bike has no speaker connected, or Velo is out of range.');
+        return failed('Speak through the bike', 'The bike has no speaker connected, or Trax is out of range.');
       }
       const sent = await device.sayOnBike(message, true);
       return sent

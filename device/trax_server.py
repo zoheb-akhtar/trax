@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Velo device server (starter).
+Trax device server (starter).
 
 Speaks the API the phone app expects (see docs/device-api.md) with made-up
 data, so the app can be tested without hardware. Runs on a laptop today and on
@@ -11,7 +11,7 @@ the three places marked REPLACE:
   2. detect()            -> the real vision model's output
   3. arm() / silence()   -> messages to the microcontroller (IMU, buzzer, LEDs)
 
-Run:   python3 velo_server.py            (then point the app at <this-ip>:8000)
+Run:   python3 trax_server.py            (then point the app at <this-ip>:8000)
 Fake a theft:  press Enter in this terminal, or  curl -X POST localhost:8000/debug/tamper
 Fake a close pass:  curl -X POST localhost:8000/debug/car
 Fake a pothole:     curl -X POST localhost:8000/debug/pothole
@@ -112,7 +112,7 @@ class Speaker:
     def play(self, audio: bytes) -> None:
         print(f"[speaker] playing the owner's voice ({len(audio)} bytes)", flush=True)
         if self.out_loud and shutil.which("afplay"):
-            path = os.path.join(tempfile.gettempdir(), "velo-owner-voice.m4a")
+            path = os.path.join(tempfile.gettempdir(), "trax-owner-voice.m4a")
             with open(path, "wb") as file:
                 file.write(audio)
             threading.Thread(target=self._run, args=(["afplay", path], True), daemon=True).start()
@@ -501,7 +501,7 @@ def wait_for_enter() -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Velo device server (starter)")
+    parser = argparse.ArgumentParser(description="Trax device server (starter)")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--speak", action="store_true",
                         help="say the bike's lines out loud on this Mac, as if it were the speaker")
@@ -514,7 +514,7 @@ def main() -> None:
 
     server = ThreadingHTTPServer(("0.0.0.0", args.port), Handler)
     server.daemon_threads = True
-    print(f"Velo device server on port {args.port}")
+    print(f"Trax device server on port {args.port}")
     for address in lan_addresses():
         print(f"  In the app's Device tab, enter:  {address}:{args.port}")
     print(f"  From the iOS simulator on this Mac:   localhost:{args.port}")

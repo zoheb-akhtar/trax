@@ -3,7 +3,7 @@ import { requireOptionalNativeModule } from 'expo';
 /**
  * Listening to the owner's voice, with on-device speech recognition.
  *
- * The recogniser is native code that is only present in Velo's own build of the app.
+ * The recogniser is native code that is only present in Trax's own build of the app.
  * In Expo Go it is missing, so everything here reports "unavailable" instead of crashing,
  * and the agent falls back to typed questions.
  */
@@ -48,8 +48,8 @@ export type Listening = {
   result: Promise<ListenResult>;
 };
 
-/** Words the recogniser should expect, so it does not hear "Velo" as "fellow". */
-const VOCABULARY = ['Velo', 'arm the bike', 'disarm', 'rear camera', 'front camera', 'close pass'];
+/** Words the recogniser should expect, so it hears "Trax" rather than "tracks". */
+const VOCABULARY = ['Trax', 'arm the bike', 'disarm', 'rear camera', 'front camera', 'close pass'];
 
 /** Listens for one spoken question. `onHeard` gets the words as they are recognised. */
 export function listen(onHeard: (text: string) => void): Listening {

@@ -9,7 +9,7 @@ const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 const SPRING = { damping: 30, stiffness: 450 };
 
 /**
- * Tap and talk to Velo's AI agent. Tap again to finish early. It never opens the written
+ * Tap and talk to Trax's AI agent. Tap again to finish early. It never opens the written
  * conversation; that is reached by tapping the caption card. Hidden when the agent is off.
  */
 export function AgentButton() {
@@ -21,7 +21,7 @@ export function AgentButton() {
   return (
     <AnimatedPressable
       accessibilityRole="button"
-      accessibilityLabel={listening ? 'Stop listening' : 'Talk to Velo'}
+      accessibilityLabel={listening ? 'Stop listening' : 'Talk to Trax'}
       hitSlop={8}
       onPressIn={() => {
         scale.set(withSpring(0.92, SPRING));
@@ -53,7 +53,7 @@ export function AgentButton() {
 }
 
 const styles = StyleSheet.create({
-  // Blue with a soft glow while Velo is listening or waiting for a question
+  // Blue with a soft glow while Trax is listening or waiting for a question
   listening: {
     backgroundColor: Status.accent,
     shadowColor: Status.accent,

@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { readStored } from '@/lib/storage';
 
 import type { Detection, DeviceMode } from '@/device/types';
 import type { Parked } from '@/security/security-log';
@@ -6,7 +7,7 @@ import type { Parked } from '@/security/security-log';
 /**
  * One time the bike was left somewhere: where, for how long, and how busy the spot was.
  *
- * This is the parking data Velo collects for the street map: which racks people use, how
+ * This is the parking data Trax collects for the street map: which racks people use, how
  * long bikes stay, and how full the racks get. The counts are numbers only; no pictures or
  * identities are kept.
  */
@@ -37,7 +38,7 @@ export type ParkingInput = {
   detections: Detection[];
 };
 
-const STORAGE_KEY = 'velo.parking';
+const STORAGE_KEY = 'trax.parking';
 const MAX_STAYS = 200;
 /** Shorter stops than this aren't parking (arming to test it, a quick stop). */
 const MIN_STAY_MS = 30000;
@@ -65,7 +66,7 @@ export class ParkingLog {
     this.loading = true;
     let stays: ParkingStay[] = [];
     try {
-      const raw = await AsyncStorage.getItem(STORAGE_KEY);
+      const raw = await readStored(STORAGE_KEY);
       if (raw) stays = JSON.parse(raw);
     } catch {
       // Unreadable data is treated as empty.

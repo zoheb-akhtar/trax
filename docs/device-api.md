@@ -1,6 +1,6 @@
-# Velo device API (what the app expects)
+# Trax device API (what the app expects)
 
-The app talks to the Velo device over the local network (phone hotspot). The
+The app talks to the Trax device over the local network (phone hotspot). The
 device runs a small HTTP server; port is up to you (the app takes `ip:port`).
 Allow cross-origin requests (CORS `*`) so the web build works too.
 
@@ -105,7 +105,7 @@ Body: `{ "text": "Car behind, on your left", "urgent": true }`. Say the text thr
 speaker with text-to-speech (`espeak-ng`, or `piper` for a nicer voice). `urgent` lines cut off
 whatever is playing; others wait their turn. Answer straight away and speak in the background.
 
-While riding, this carries everything Velo tells the rider: warnings, turns, the AI's answers.
+While riding, this carries everything Trax tells the rider: warnings, turns, the AI's answers.
 While parked, the owner uses it to warn whoever is at the bike.
 
 ## `POST /play`

@@ -1,11 +1,11 @@
-# Velo firmware guide
+# Trax firmware guide
 
 Everything the phone app needs from the device, in the order to build it, with a way to
 check each step. Formats are in [device-api.md](device-api.md); this file is the plan.
 
 ## How to use this
 
-1. Start from [`device/velo_server.py`](../device/velo_server.py). It already serves every
+1. Start from [`device/trax_server.py`](../device/trax_server.py). It already serves every
    address the app uses, with made-up data. Three places are marked `REPLACE`.
 2. Work through the stages below in order. After each one, run the checker and then try
    the app.
@@ -18,7 +18,7 @@ python3 device/check_device.py <board-ip>:8000
 The checker needs only Python's standard library. It briefly arms the device and sounds
 the alarm, then restores it.
 
-**Using an AI assistant:** give it this file, `device-api.md`, `velo_server.py`, and the
+**Using an AI assistant:** give it this file, `device-api.md`, `trax_server.py`, and the
 facts it cannot see: how the camera is read today, which pins each part is on, the exact
 sensor and GPS modules, and Arduino's documentation for passing messages between the
 UNO Q's Linux side and its microcontroller. Ask for one stage at a time.
@@ -59,7 +59,7 @@ Test on a phone hotspot early. Venue and campus Wi-Fi often stop devices seeing 
       handlers only send that frame.
 - [ ] The web server is **threaded** (Python's `ThreadingHTTPServer`, or Flask with
       `threaded=True`). The app keeps `/stream` open the whole time; a single-threaded server
-      then never answers `/state`, and the app shows Velo as offline.
+      then never answers `/state`, and the app shows Trax as offline.
 - [ ] Frames are **4:3** (640×480). The app places boxes and works out distances for a 4:3
       picture. Don't mirror the rear image.
 - [ ] With one camera, ignore the `camera` parameter. With two, also list

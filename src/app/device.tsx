@@ -47,8 +47,8 @@ export default function DeviceScreen() {
       if (!problem) return;
       Alert.alert('Push not sent', problem);
     }
-    const shown = await notifyNow('Velo', 'This is a test notification. Alerts will look like this.');
-    if (!shown) Alert.alert('Notifications are off', 'Allow notifications for Velo in Settings.');
+    const shown = await notifyNow('Trax', 'This is a test notification. Alerts will look like this.');
+    if (!shown) Alert.alert('Notifications are off', 'Allow notifications for Trax in Settings.');
   };
   const { rides, clearRides, loadSampleWeek } = useRideHistory();
   const { entries, clearEntries } = useSecurity();
@@ -82,7 +82,7 @@ export default function DeviceScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <Card>
-          <ThemedText type="label">Velo address</ThemedText>
+          <ThemedText type="label">Trax address</ThemedText>
           <TextInput
             value={host}
             onChangeText={setHost}
@@ -94,10 +94,10 @@ export default function DeviceScreen() {
             style={[styles.input, { color: theme.text, backgroundColor: theme.background }]}
           />
           <ThemedText type="small" themeColor="textSecondary">
-            The phone and Velo must be on the same Wi-Fi, such as this phone&apos;s hotspot.
+            The phone and Trax must be on the same Wi-Fi, such as this phone&apos;s hotspot.
           </ThemedText>
           <Button
-            title={usingDevice && host === settings.host ? 'Reconnect' : 'Connect to Velo'}
+            title={usingDevice && host === settings.host ? 'Reconnect' : 'Connect to Trax'}
             disabled={!host.trim()}
             onPress={() => updateSettings({ source: 'device', host: host.trim() })}
           />
@@ -123,7 +123,7 @@ export default function DeviceScreen() {
         <Card>
           <ThemedText type="label">AI agent</ThemedText>
           <View style={styles.choice}>
-            <ThemedText style={styles.grow}>Ask Velo button</ThemedText>
+            <ThemedText style={styles.grow}>Ask Trax button</ThemedText>
             <Switch
               value={prefs.agentEnabled}
               onValueChange={(agentEnabled) => prefs.update({ agentEnabled })}
@@ -142,7 +142,7 @@ export default function DeviceScreen() {
           <TextInput
             value={prefs.agentToken}
             onChangeText={(agentToken) => prefs.update({ agentToken })}
-            placeholder="Server password, e.g. velo-1234"
+            placeholder="Server password, e.g. trax-1234"
             placeholderTextColor={theme.textSecondary}
             autoCapitalize="none"
             autoCorrect={false}
@@ -193,8 +193,8 @@ export default function DeviceScreen() {
           </View>
           <ThemedText type="small" themeColor="textSecondary">
             {hasSpeaker
-              ? 'Velo’s speaker is connected.'
-              : 'Velo has no speaker connected, so the phone speaks for now.'}{' '}
+              ? 'Trax’s speaker is connected.'
+              : 'Trax has no speaker connected, so the phone speaks for now.'}{' '}
             “Bike” falls back to the phone whenever the bike can’t be reached.
           </ThemedText>
         </Card>
@@ -217,7 +217,7 @@ export default function DeviceScreen() {
             style={[styles.input, { color: theme.text, backgroundColor: theme.background }]}
           />
           <ThemedText type="small" themeColor="textSecondary">
-            If Velo detects a crash, a message with your location is prepared for this person. Kept
+            If Trax detects a crash, a message with your location is prepared for this person. Kept
             on this phone only.
           </ThemedText>
         </Card>
@@ -226,12 +226,12 @@ export default function DeviceScreen() {
           <ThemedText type="label">Notifications</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
             {pushOn
-              ? 'The laptop is watching Velo and sends a notification when the bike is moved, even with this app closed.'
+              ? 'The laptop is watching Trax and sends a notification when the bike is moved, even with this app closed.'
               : settings.source !== 'device'
-                ? 'Velo shows a notification when the bike is moved while this app is open. With a real Velo connected, the laptop can also notify you with the app closed.'
+                ? 'Trax shows a notification when the bike is moved while this app is open. With a real Trax connected, the laptop can also notify you with the app closed.'
                 : pushProjectId()
-                  ? 'Velo shows a notification when the bike is moved while this app is open. Allow notifications and connect the agent server so the laptop can notify you with the app closed.'
-                  : 'Velo shows a notification when the bike is moved while this app is open. Notifications with the app closed need this project set up for push (eas init).'}
+                  ? 'Trax shows a notification when the bike is moved while this app is open. Allow notifications and connect the agent server so the laptop can notify you with the app closed.'
+                  : 'Trax shows a notification when the bike is moved while this app is open. Notifications with the app closed need this project set up for push (eas init).'}
           </ThemedText>
           <Button title="Send a test notification" variant="secondary" onPress={testNotification} />
         </Card>
@@ -242,8 +242,8 @@ export default function DeviceScreen() {
             <ThemedText type="label">Demo</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
               {testRoutes
-                ? 'For the test server on the laptop. A real Velo ignores these: move the bike instead.'
-                : 'Arms the simulated Velo and pretends someone moved the bike.'}
+                ? 'For the test server on the laptop. A real Trax ignores these: move the bike instead.'
+                : 'Arms the simulated Trax and pretends someone moved the bike.'}
             </ThemedText>
             <Button
               title="Simulate bike being moved"
@@ -256,7 +256,7 @@ export default function DeviceScreen() {
                 variant="secondary"
                 onPress={async () => {
                   if (!(await simulateCar())) {
-                    Alert.alert('Not available', 'This Velo has no test routes. Only the laptop test server does.');
+                    Alert.alert('Not available', 'This Trax has no test routes. Only the laptop test server does.');
                   }
                 }}
               />

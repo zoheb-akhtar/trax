@@ -144,7 +144,7 @@ export default function HistoryScreen() {
           {security.loaded && security.entries.length === 0 ? (
             <ThemedText themeColor="textSecondary">
               Nothing yet. Arming, disarming and every alarm are recorded here, with pictures when
-              Velo&apos;s camera is connected.
+              Trax&apos;s camera is connected.
             </ThemedText>
           ) : (
             <>
@@ -175,7 +175,7 @@ export default function HistoryScreen() {
         <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
           {loaded && rides.length === 0 && (
             <ThemedText themeColor="textSecondary">
-              No rides yet. Velo starts recording when you set off and saves the ride when you tap
+              No rides yet. Trax starts recording when you set off and saves the ride when you tap
               End ride.
             </ThemedText>
           )}
@@ -359,7 +359,7 @@ function RideDetail({
   const potholes = (ride.potholes ?? []).flatMap((p) => (p.at ? [p.at] : []));
   const share = () =>
     Share.share({
-      message: `Velo ride: ${formatDistance(ride.distance)} in ${duration(ride)}, ${
+      message: `Trax ride: ${formatDistance(ride.distance)} in ${duration(ride)}, ${
         ride.closePasses
       } close ${ride.closePasses === 1 ? 'pass' : 'passes'}, safety score ${score}/100.`,
     }).catch(() => {});
@@ -453,7 +453,7 @@ function RideDetail({
                 {[
                   pins.length > 0 && 'Red dots are close passes.',
                   potholes.length > 0 &&
-                    `Orange dots are potholes (${potholes.length}), felt by Velo's motion sensor.`,
+                    `Orange dots are potholes (${potholes.length}), felt by Trax's motion sensor.`,
                 ]
                   .filter(Boolean)
                   .join(' ')}
@@ -540,7 +540,7 @@ function RideDetail({
           </>
         ) : (
           <ThemedText themeColor="textSecondary">
-            No pictures were saved for this ride. Pictures need a connected Velo with a camera; the
+            No pictures were saved for this ride. Pictures need a connected Trax with a camera; the
             simulated device has none.
           </ThemedText>
         )}

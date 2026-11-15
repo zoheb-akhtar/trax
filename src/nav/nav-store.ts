@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { readStored } from '@/lib/storage';
 import * as Location from 'expo-location';
 
 import { haptic } from '@/lib/haptics';
@@ -186,7 +187,7 @@ export class NavStore {
       if (!start) {
         this.set({
           status: 'error',
-          error: 'Location is off. Type a starting point, or allow location for Velo.',
+          error: 'Location is off. Type a starting point, or allow location for Trax.',
         });
         return;
       }
@@ -288,7 +289,7 @@ export class NavStore {
     if (!granted) {
       this.set({
         navigating: false,
-        error: 'Location is off, so Velo can’t follow you. Turn it on, or use Preview.',
+        error: 'Location is off, so Trax can’t follow you. Turn it on, or use Preview.',
       });
       return;
     }
@@ -470,7 +471,7 @@ function covers(loaded: Route | null, route: Route) {
 /** How many times to ask the map service before giving up, and how long between tries. */
 const MAP_ATTEMPTS = 4;
 const MAP_RETRY_MS = 6000;
-const MAP_INDEX_KEY = 'velo.maps';
+const MAP_INDEX_KEY = 'trax.maps';
 /** Trips whose map data is kept; the oldest is dropped beyond this. */
 const MAPS_KEPT = 6;
 
@@ -479,12 +480,12 @@ type SavedMap = Partial<Pick<NavSnapshot, 'roads' | 'parking' | 'closures' | 'bu
 /** Identifies a trip by where it starts and ends, to about 100 metres. */
 function mapKey(route: Route) {
   const round = (p: { lat: number; lon: number }) => `${p.lat.toFixed(3)},${p.lon.toFixed(3)}`;
-  return `velo.map.${round(route.points[0])}-${round(route.points[route.points.length - 1])}`;
+  return `trax.map.${round(route.points[0])}-${round(route.points[route.points.length - 1])}`;
 }
 
 async function readSavedMap(key: string): Promise<SavedMap | null> {
   try {
-    const raw = await AsyncStorage.getItem(key);
+    const raw = await readStored(key);
     return raw ? (JSON.parse(raw) as SavedMap) : null;
   } catch {
     return null;
@@ -494,7 +495,7 @@ async function readSavedMap(key: string): Promise<SavedMap | null> {
 async function saveMap(key: string, map: SavedMap) {
   try {
     await AsyncStorage.setItem(key, JSON.stringify(map));
-    const raw = await AsyncStorage.getItem(MAP_INDEX_KEY);
+    const raw = await readStored(MAP_INDEX_KEY);
     const keys: string[] = [key, ...(raw ? (JSON.parse(raw) as string[]) : []).filter((k) => k !== key)];
     await Promise.all(keys.slice(MAPS_KEPT).map((old) => AsyncStorage.removeItem(old)));
     await AsyncStorage.setItem(MAP_INDEX_KEY, JSON.stringify(keys.slice(0, MAPS_KEPT)));

@@ -72,7 +72,7 @@ export default function SecurityScreen() {
           <ThemedText style={styles.status}>{armed ? 'Armed' : 'Not armed'}</ThemedText>
           <ThemedText themeColor="textSecondary" style={styles.hint}>
             {armed
-              ? 'Velo sounds its alarm if the bike is moved.'
+              ? 'Trax sounds its alarm if the bike is moved.'
               : 'Tap the shield when you park.'}
           </ThemedText>
         </View>
@@ -98,7 +98,7 @@ export default function SecurityScreen() {
                 {lastSeen.place ?? 'Position known'}
               </ThemedText>
               <ThemedText themeColor="textSecondary">
-                {live ? 'Live from Velo’s GPS' : `Last seen at ${seenAt}, now out of range`}
+                {live ? 'Live from Trax’s GPS' : `Last seen at ${seenAt}, now out of range`}
                 {position ? ` · ${howFar(position, lastSeen)}` : ''}
               </ThemedText>
               {movedBy > MOVED_M && (
@@ -116,7 +116,7 @@ export default function SecurityScreen() {
             </>
           ) : (
             <ThemedText themeColor="textSecondary">
-              Velo hasn’t reported a GPS position yet. You can still make it beep when it’s in range.
+              Trax hasn’t reported a GPS position yet. You can still make it beep when it’s in range.
             </ThemedText>
           )}
           <View style={styles.cameras}>
@@ -176,7 +176,7 @@ export default function SecurityScreen() {
         )}
 
         <ThemedText type="small" themeColor="textSecondary">
-          Alerts and pictures reach this phone only while it is connected to Velo.
+          Alerts and pictures reach this phone only while it is connected to Trax.
         </ThemedText>
       </ScrollView>
 

@@ -112,7 +112,7 @@ export async function describeAlarmPicture(client: Anthropic, jpegBase64: string
 }
 
 /**
- * One spoken sentence written from a list of facts, for the moments when Velo speaks up by
+ * One spoken sentence written from a list of facts, for the moments when Trax speaks up by
  * itself (a route briefing, a ride debrief). Returns null if nothing usable came back.
  */
 export async function oneLine(client: Anthropic, instructions: string, facts: string) {
@@ -149,7 +149,7 @@ export function explainError(error: unknown) {
     return 'That took too long. Try asking again.';
   }
   if (error instanceof Anthropic.APIConnectionError) {
-    return "I can't reach the Velo agent server. Check its address in the Device tab.";
+    return "I can't reach the Trax agent server. Check its address in the Device tab.";
   }
   if (error instanceof Anthropic.AuthenticationError) {
     // The agent server's own refusal (wrong password) looks different from the AI service

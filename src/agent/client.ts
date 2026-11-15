@@ -10,7 +10,7 @@ export function proxyUrl(address: string) {
 }
 
 /**
- * A client that talks to the Velo agent proxy, which holds the real API key.
+ * A client that talks to the Trax agent proxy, which holds the real API key.
  *
  * `apiKey` here is only the optional proxy token (or a placeholder), never an Anthropic key,
  * which is why allowing the SDK to run inside the app is safe.
@@ -18,9 +18,9 @@ export function proxyUrl(address: string) {
 export function makeClient(address: string, token: string) {
   return new Anthropic({
     baseURL: proxyUrl(address),
-    apiKey: cleanToken(token) || 'velo-proxy',
+    apiKey: cleanToken(token) || 'trax-proxy',
     // The SDK sends the key as "Authorization: Bearer"; the agent server reads x-api-key.
-    defaultHeaders: { 'x-api-key': cleanToken(token) || 'velo-proxy' },
+    defaultHeaders: { 'x-api-key': cleanToken(token) || 'trax-proxy' },
     dangerouslyAllowBrowser: true,
     // No automatic retry: a slow request that is retried is sent, and billed, twice.
     maxRetries: 0,
@@ -62,8 +62,8 @@ export async function checkAgentServer(address: string, token: string) {
   try {
     const response = await fetch(`${base}/v1/messages`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-api-key': cleanToken(token) || 'velo-proxy' },
-      body: JSON.stringify({ model: 'velo-check' }),
+      headers: { 'content-type': 'application/json', 'x-api-key': cleanToken(token) || 'trax-proxy' },
+      body: JSON.stringify({ model: 'trax-check' }),
     });
     status = response.status;
   } catch {
@@ -72,7 +72,7 @@ export async function checkAgentServer(address: string, token: string) {
   if (status === 401) {
     return {
       title: 'Wrong password',
-      detail: `The phone sent "${cleanToken(token) || '(nothing)'}". The agent server printed its password when it started (velo- and four digits). Enter it exactly, under AI agent.`,
+      detail: `The phone sent "${cleanToken(token) || '(nothing)'}". The agent server printed its password when it started (trax- and four digits). Enter it exactly, under AI agent.`,
     };
   }
   if (!health.key_configured) {

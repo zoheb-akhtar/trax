@@ -39,7 +39,7 @@ const OVERPASS_ROUNDS = 1;
  * The community servers turn away clients that don't say what they are.
  * (Browsers ignore this header and send their own.)
  */
-const IDENTIFY = { 'User-Agent': 'VeloBikeApp/0.1 (hackathon prototype)' };
+const IDENTIFY = { 'User-Agent': 'TraxBikeApp/0.1 (hackathon prototype)' };
 export const MAP_REQUEST_HEADERS = IDENTIFY;
 
 const BIKES_ALLOWED = new Set(['yes', 'designated', 'permissive']);

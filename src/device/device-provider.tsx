@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { readStored } from '@/lib/storage';
 import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import {
   createContext,
@@ -18,7 +19,7 @@ import type { CameraId, DeviceMode, DeviceSnapshot } from './types';
 
 export type DeviceSettings = {
   source: 'simulated' | 'device';
-  /** IP or hostname of the Velo device, with optional port */
+  /** IP or hostname of the Trax device, with optional port */
   host: string;
 };
 
@@ -48,8 +49,8 @@ type DeviceContextValue = DeviceSnapshot & {
   hasSpeaker: boolean;
 };
 
-const STORAGE_KEY = 'velo.device-settings';
-const KEEP_AWAKE_TAG = 'velo-ride';
+const STORAGE_KEY = 'trax.device-settings';
+const KEEP_AWAKE_TAG = 'trax-ride';
 const DEFAULT_SETTINGS: DeviceSettings = { source: 'simulated', host: '' };
 
 const DeviceContext = createContext<DeviceContextValue | null>(null);
@@ -58,7 +59,7 @@ export function DeviceProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<DeviceSettings | null>(null);
 
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY)
+    readStored(STORAGE_KEY)
       .then((raw) =>
         setSettings(raw ? { ...DEFAULT_SETTINGS, ...JSON.parse(raw) } : DEFAULT_SETTINGS),
       )
@@ -112,8 +113,8 @@ function ConnectedProvider({
     };
   }, [riding]);
 
-  // While riding, the rider is at the bike, so Velo talks to them through its speaker. While
-  // parked the owner is elsewhere: what Velo says to them stays on the phone, and only the
+  // While riding, the rider is at the bike, so Trax talks to them through its speaker. While
+  // parked the owner is elsewhere: what Trax says to them stays on the phone, and only the
   // deliberate warnings to whoever is at the bike (sayOnBike, playOnBike) use the speaker.
   const hasSpeaker = snapshot.connection === 'connected' && snapshot.state.speaker;
   const speakToRider = hasSpeaker && riding;

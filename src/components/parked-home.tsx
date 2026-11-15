@@ -66,7 +66,7 @@ const PREVIEW_EVERY_MS = 4000;
 const DAY_MS = 86400000;
 
 /**
- * The Ride tab while Velo is armed: a live look through its cameras, its status, what has happened lately, and where you're going next.
+ * The Ride tab while Trax is armed: a live look through its cameras, its status, what has happened lately, and where you're going next.
  */
 export function ParkedHome({ onPlan }: { onPlan(): void }) {
   const insets = useSafeAreaInsets();
@@ -132,7 +132,7 @@ export function ParkedHome({ onPlan }: { onPlan(): void }) {
       {/* The name, level with the mic button at the top right. */}
       <View style={[styles.brandRow, { top: insets.top + Spacing.two }]} pointerEvents="none">
         <Text style={styles.brand} accessibilityRole="header">
-          Velo
+          Trax
         </Text>
       </View>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
@@ -192,7 +192,7 @@ export function ParkedHome({ onPlan }: { onPlan(): void }) {
             <Text style={styles.muted}>
               {connection === 'simulated'
                 ? 'The simulated device has no camera picture.'
-                : 'Velo is out of range, so there is no picture.'}
+                : 'Trax is out of range, so there is no picture.'}
             </Text>
           </View>
         )}
@@ -225,7 +225,7 @@ export function ParkedHome({ onPlan }: { onPlan(): void }) {
             </View>
           </LinearGradient>
           <View style={[styles.tile, styles.inkTile]}>
-            <Text style={styles.tileLabel}>VELO</Text>
+            <Text style={styles.tileLabel}>TRAX</Text>
             <View style={styles.inline}>
               <View style={[styles.dot, { backgroundColor: link.color }]} />
               <Text style={styles.tileMid}>{link.label}</Text>

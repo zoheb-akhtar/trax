@@ -22,7 +22,7 @@ import { useDevice } from '@/device/device-provider';
 const WHILE_RIDING = ['Anything behind me?', 'Take me to Boston Public Library', 'Show the rear camera'];
 const WHILE_PARKED = ['What happened while I was away?', 'What can the rear camera see?', 'How safe were my rides this week?'];
 
-/** The conversation with Velo's AI agent: what was asked, what it did, and what it said. */
+/** The conversation with Trax's AI agent: what was asked, what it did, and what it said. */
 export function AgentSheet() {
   const { open, setOpen, thinking, transcript, confirming, answer, ask, reset } = useAgent();
   const { state } = useDevice();
@@ -54,7 +54,7 @@ export function AgentSheet() {
                 tintColor="#ffffff"
               />
             </View>
-            <Text style={styles.title}>Ask Velo</Text>
+            <Text style={styles.title}>Ask Trax</Text>
             {transcript.length > 0 && (
               <Button title="Clear" size="small" variant="secondary" onPress={reset} />
             )}
@@ -69,7 +69,7 @@ export function AgentSheet() {
             onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: true })}>
             {transcript.length === 0 && (
               <View style={styles.intro}>
-                <Text style={styles.introTitle}>Velo can see what the bike sees and run the app for you.</Text>
+                <Text style={styles.introTitle}>Trax can see what the bike sees and run the app for you.</Text>
                 <Text style={styles.introBody}>
                   It asks before disarming or sounding the alarm, and only looks through a camera
                   when you ask it to or when the alarm goes off.
@@ -113,7 +113,7 @@ export function AgentSheet() {
               <TextInput
                 value={draft}
                 onChangeText={setDraft}
-                placeholder="Ask or tell Velo something"
+                placeholder="Ask or tell Trax something"
                 placeholderTextColor="#9A9EA4"
                 style={styles.input}
                 returnKeyType="send"
@@ -151,7 +151,7 @@ function Line({ line }: { line: TranscriptLine }) {
     );
   }
   return (
-    <View style={[styles.bubble, styles.velo, line.kind === 'problem' && styles.problem]}>
+    <View style={[styles.bubble, styles.trax, line.kind === 'problem' && styles.problem]}>
       <Text style={styles.text}>{line.text}</Text>
     </View>
   );
@@ -192,7 +192,7 @@ const styles = StyleSheet.create({
   suggestionText: { fontFamily: Type.medium, fontSize: 15, color: '#111111' },
   bubble: { maxWidth: '86%', paddingVertical: 10, paddingHorizontal: 14, borderRadius: 18 },
   you: { alignSelf: 'flex-end', backgroundColor: '#111111' },
-  velo: {
+  trax: {
     alignSelf: 'flex-start',
     backgroundColor: '#FFFFFF',
     borderWidth: StyleSheet.hairlineWidth,

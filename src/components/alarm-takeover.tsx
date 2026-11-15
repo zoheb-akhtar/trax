@@ -82,7 +82,7 @@ export function AlarmTakeover() {
     const where = causePlace ? ` near ${causePlace}` : '';
     // A notification banner, unless the laptop is already pushing one for this.
     if (!laptopPushes()) {
-      notifyNow('Velo: bike moved', `Your bike was moved at ${time}${where}. Its alarm is sounding.`, {
+      notifyNow('Trax: bike moved', `Your bike was moved at ${time}${where}. Its alarm is sounding.`, {
         kind: 'tamper',
       });
     }
@@ -106,7 +106,7 @@ export function AlarmTakeover() {
           if (seen) {
             describeEntry(causeId, seen); // kept with the entry, so it also shows in History
             if (current) say(seen, true);
-            if (isFresh(causeTs)) notifyNow('Velo sees', seen, { kind: 'tamper' });
+            if (isFresh(causeTs)) notifyNow('Trax sees', seen, { kind: 'tamper' });
           }
         } catch {
           // No description this time; the alarm itself is unaffected.
@@ -150,7 +150,7 @@ export function AlarmTakeover() {
             <PulsingIcon />
             <Text style={styles.title}>{fromPhone ? 'Alarm sounding' : 'Bike moved'}</Text>
             <Text style={styles.body}>
-              {fromPhone ? 'You set it off from this phone' : "Velo's alarm is sounding"}
+              {fromPhone ? 'You set it off from this phone' : "Trax's alarm is sounding"}
               {cause
                 ? ` · ${new Date(cause.ts).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}`
                 : ''}
@@ -169,7 +169,7 @@ export function AlarmTakeover() {
             )}
             {!fromPhone && (cause?.description || looking) && (
               <View style={styles.seen}>
-                <Text style={styles.seenLabel}>VELO SEES</Text>
+                <Text style={styles.seenLabel}>TRAX SEES</Text>
                 <Text style={styles.seenText}>
                   {cause?.description ?? 'Looking at the camera…'}
                 </Text>

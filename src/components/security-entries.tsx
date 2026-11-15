@@ -121,7 +121,7 @@ export function SecurityEntryDetail({
         {entry.place && <ThemedText themeColor="textSecondary">Near {entry.place}</ThemedText>}
         {entry.description && (
           <View style={styles.seen}>
-            <ThemedText type="label">What Velo saw</ThemedText>
+            <ThemedText type="label">What Trax saw</ThemedText>
             <ThemedText>{entry.description}</ThemedText>
           </View>
         )}
@@ -129,7 +129,7 @@ export function SecurityEntryDetail({
         {entry.pictures.length === 0 ? (
           <ThemedText themeColor="textSecondary">
             {entry.kind === 'tamper' || entry.kind === 'motion' || entry.kind === 'crash'
-              ? 'No picture was saved. Pictures need a connected Velo with a camera, and the phone in range when it happens.'
+              ? 'No picture was saved. Pictures need a connected Trax with a camera, and the phone in range when it happens.'
               : 'No pictures are taken for this kind of entry.'}
           </ThemedText>
         ) : (

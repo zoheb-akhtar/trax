@@ -1,5 +1,5 @@
 /**
- * Settings for Velo's AI agent. To trade answer quality for speed and cost, change MODEL to
+ * Settings for Trax's AI agent. To trade answer quality for speed and cost, change MODEL to
  * 'claude-haiku-5-5' here; nothing else needs to change.
  */
 export const MODEL = 'claude-opus-5-5';

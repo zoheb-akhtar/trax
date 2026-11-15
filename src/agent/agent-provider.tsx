@@ -24,8 +24,8 @@ import type { AgentWorld } from './tools';
 
 export type TranscriptLine = {
   id: number;
-  /** you: the owner. velo: the agent's answer. did: something the agent did. problem: a failure. */
-  kind: 'you' | 'velo' | 'did' | 'problem';
+  /** you: the owner. trax: the agent's answer. did: something the agent did. problem: a failure. */
+  kind: 'you' | 'trax' | 'did' | 'problem';
   text: string;
 };
 
@@ -50,12 +50,12 @@ type AgentContextValue = {
   /** The lines of the question being handled now (or just answered) */
   current: TranscriptLine[];
   transcript: TranscriptLine[];
-  /** A question the agent is waiting on before it acts, e.g. "Disarm Velo?" */
+  /** A question the agent is waiting on before it acts, e.g. "Disarm Trax?" */
   confirming: string | null;
   answer(yes: boolean): void;
   ask(text: string): void;
   /**
-   * Velo speaking up by itself: says a line aloud and notes it in the conversation. If a
+   * Trax speaking up by itself: says a line aloud and notes it in the conversation. If a
    * question is in progress it waits until that is over.
    */
   announce(text: string): void;
@@ -73,7 +73,7 @@ const AGENT_ROUTE_QUIET_MS = 30000;
 
 const AgentContext = createContext<AgentContextValue | null>(null);
 
-/** Velo's AI agent: holds the conversation and lets the model act on the rest of the app. */
+/** Trax's AI agent: holds the conversation and lets the model act on the rest of the app. */
 export function AgentProvider({ children }: { children: ReactNode }) {
   const settings = useSettings();
   const device = useDevice();
@@ -96,7 +96,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
   const ear = useRef<RecorderControl | null>(null);
   /** True from a tap on the mic until what was said has been worked out. */
   const hearing = useRef(false);
-  /** A line Velo wanted to say while a question was in progress. */
+  /** A line Trax wanted to say while a question was in progress. */
   const waitingLine = useRef<string | null>(null);
   const agentRoutedAt = useRef(0);
 
@@ -217,7 +217,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
         before = 0;
         reply = await turn();
       }
-      add('velo', reply);
+      add('trax', reply);
       haptic.tap();
       say(reply, true);
     } catch (error) {
@@ -234,12 +234,12 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  /** Says the line Velo held back while a question was in progress, now that it is over. */
+  /** Says the line Trax held back while a question was in progress, now that it is over. */
   const sayWaitingLine = () => {
     const line = waitingLine.current;
     if (!line || busy.current || hearing.current) return;
     waitingLine.current = null;
-    setTurnFrom(add('velo', line));
+    setTurnFrom(add('trax', line));
     setActive(true);
     sayAfter(line);
   };
@@ -261,7 +261,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       if (proxy !== 'ready') {
         hearing.current = false;
         if (proxy === 'no-speech') return setChoosing(true);
-        const message = "I can't reach the Velo agent server. Check its address in the Device tab.";
+        const message = "I can't reach the Trax agent server. Check its address in the Device tab.";
         add('problem', message);
         say(message, true);
         return;
@@ -294,7 +294,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       return; // the owner stopped it on purpose: nothing to say
     }
     if (outcome.reason === 'denied') {
-      const message = 'Velo needs microphone access. Turn it on in Settings.';
+      const message = 'Trax needs microphone access. Turn it on in Settings.';
       add('problem', message);
       say(message, true);
     } else if (outcome.reason === 'password') {

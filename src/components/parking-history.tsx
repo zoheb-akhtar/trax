@@ -14,7 +14,7 @@ function hours(ms: number) {
 
 /**
  * The Parking tab in History: where the bike was left, for how long, and how full each rack
- * was. This is the parking layer of Velo's street data: counts only, no pictures.
+ * was. This is the parking layer of Trax's street data: counts only, no pictures.
  */
 export function ParkingHistory({ stays, since }: { stays: ParkingStay[]; since: number }) {
   const [now] = useState(() => Date.now());
@@ -23,7 +23,7 @@ export function ParkingHistory({ stays, since }: { stays: ParkingStay[]; since: 
   if (stays.length === 0) {
     return (
       <ThemedText themeColor="textSecondary">
-        No parking yet. Each time Velo is armed, it notes where the bike was left, how long it
+        No parking yet. Each time Trax is armed, it notes where the bike was left, how long it
         stayed, and how many other bikes were parked there.
       </ThemedText>
     );
@@ -87,7 +87,7 @@ export function ParkingHistory({ stays, since }: { stays: ParkingStay[]; since: 
       ))}
 
       <ThemedText type="small" themeColor="textSecondary">
-        Velo&apos;s camera counts the bikes and people around the rack while it guards your bike.
+        Trax&apos;s camera counts the bikes and people around the rack while it guards your bike.
         Only the counts are kept: no pictures of the rack or of anyone passing.
       </ThemedText>
     </>

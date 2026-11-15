@@ -68,7 +68,7 @@ function Placeholder({ connection }: { connection: Connection }) {
   return (
     <View style={[StyleSheet.absoluteFill, styles.center]}>
       <Text style={styles.placeholderText}>
-        {connection === 'connecting' ? 'Connecting to Velo…' : 'No signal from Velo'}
+        {connection === 'connecting' ? 'Connecting to Trax…' : 'No signal from Trax'}
       </Text>
     </View>
   );

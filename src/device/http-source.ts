@@ -30,7 +30,7 @@ export function normalizeHost(host: string) {
   return /^https?:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
 }
 
-/** Talks to the real Velo device over the local network. See docs/device-api.md. */
+/** Talks to the real Trax device over the local network. See docs/device-api.md. */
 export class HttpSource extends SnapshotStore implements DeviceSource {
   private base: string;
   private running = false;

@@ -6,7 +6,7 @@ import type { NavSnapshot } from '@/nav/nav-store';
 import type { Route } from '@/nav/types';
 
 /**
- * The facts Velo is given for the two things it says unprompted: a briefing when a route is
+ * The facts Trax is given for the two things it says unprompted: a briefing when a route is
  * planned, and a debrief when a ride ends. The wording is left to the model; these functions
  * decide what is true.
  */

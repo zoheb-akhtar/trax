@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Velo",
+    "name": "Trax",
     "slug": "ring-for-bikes",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -46,7 +46,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Velo uses your location to show where you are on the map and give turn directions."
+          "locationWhenInUsePermission": "Trax uses your location to show where you are on the map and give turn directions."
         }
       ],
       "expo-speech-recognition",

@@ -14,7 +14,7 @@ import { useSettings } from '@/settings/settings-provider';
 const COUNTDOWN_S = 10;
 
 /**
- * When Velo reports a fall during a ride, counts down and then opens a message to the
+ * When Trax reports a fall during a ride, counts down and then opens a message to the
  * rider's emergency contact with their location. The rider can cancel with "I'm OK".
  * The message is prepared, not sent: the rider still presses send. It works only while the
  * app is open, since it relies on the phone hearing from the device.
@@ -84,7 +84,7 @@ export function CrashTakeover() {
     const where = position
       ? ` My location: https://maps.apple.com/?ll=${position.lat.toFixed(5)},${position.lon.toFixed(5)}`
       : '';
-    const body = encodeURIComponent(`I may have crashed while cycling.${where} (sent with Velo)`);
+    const body = encodeURIComponent(`I may have crashed while cycling.${where} (sent with Trax)`);
     Linking.openURL(`sms:${number}${Platform.OS === 'ios' ? '&' : '?'}body=${body}`).catch(() =>
       setCouldNotOpen(true),
     );

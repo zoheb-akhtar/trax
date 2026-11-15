@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Checks a Velo device server against what the phone app needs.
+Checks a Trax device server against what the phone app needs.
 
     python3 check_device.py 192.168.1.50:8000
     python3 check_device.py localhost:8000
@@ -216,7 +216,7 @@ def main() -> int:
         record("PASS", "speaker is reported")
         try:
             started = time.time()
-            post(base, "/say", {"text": "Velo speaker check.", "urgent": False})
+            post(base, "/say", {"text": "Trax speaker check.", "urgent": False})
             took = time.time() - started
             record("PASS", "POST /say is accepted")
             check("POST /say answers at once (speech plays in the background)", took < 0.5,

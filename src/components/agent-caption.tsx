@@ -13,8 +13,8 @@ const WHILE_PARKED = ['What happened while I was away?', 'What can the rear came
 
 /**
  * What the AI agent heard, did and said, as a small card over the top of whatever screen
- * is showing. It appears when the owner talks to Velo and leaves by itself afterwards,
- * so talking to Velo never takes over the screen. During a ride it shrinks to a small
+ * is showing. It appears when the owner talks to Trax and leaves by itself afterwards,
+ * so talking to Trax never takes over the screen. During a ride it shrinks to a small
  * "Listening" marker and the answer is only spoken, so the map stays clear.
  */
 export function AgentCaption() {
@@ -38,7 +38,7 @@ export function AgentCaption() {
   if (!active || open) return null;
 
   const question = current.find((line) => line.kind === 'you')?.text;
-  const reply = current.findLast((line) => line.kind === 'velo' || line.kind === 'problem');
+  const reply = current.findLast((line) => line.kind === 'trax' || line.kind === 'problem');
   const done = current.filter((line) => line.kind === 'did');
 
   // While riding, nothing may cover the map: just a small "Listening" marker, and the answer
@@ -90,7 +90,7 @@ export function AgentCaption() {
 
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Open the conversation with Velo"
+        accessibilityLabel="Open the conversation with Trax"
         onPress={() => setOpen(true)}>
         {listening ? (
           <View style={styles.row}>

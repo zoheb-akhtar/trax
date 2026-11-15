@@ -34,7 +34,7 @@ export function ArmControl({ armed, onToggle }: { armed: boolean; onToggle(): vo
     <AnimatedPressable
       accessibilityRole="switch"
       accessibilityState={{ checked: armed }}
-      accessibilityLabel={armed ? 'Disarm Velo' : 'Arm Velo'}
+      accessibilityLabel={armed ? 'Disarm Trax' : 'Arm Trax'}
       onPressIn={() => {
         pressed.set(withSpring(0.94, PRESS_SPRING));
       }}

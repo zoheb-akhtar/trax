@@ -1,5 +1,5 @@
 /**
- * Shape of the data the Velo device reports. This mirrors the JSON returned by
+ * Shape of the data the Trax device reports. This mirrors the JSON returned by
  * `GET /state` on the device — see docs/device-api.md.
  */
 

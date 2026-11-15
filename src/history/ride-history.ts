@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { readStored } from '@/lib/storage';
 
 import { isCloseVehicle, toWorld } from '@/device/geometry';
 import type { CameraId, Detection, DeviceMode, RoadBump } from '@/device/types';
@@ -61,7 +62,7 @@ export type RideInput = {
   bumps: RoadBump[];
 };
 
-const STORAGE_KEY = 'velo.rides';
+const STORAGE_KEY = 'trax.rides';
 /** A ride starts once the bike is moving faster than this. */
 const START_KMH = 5;
 /** Shorter recordings than this are thrown away. */
@@ -120,7 +121,7 @@ export class RideHistory {
     this.loading = true;
     let rides: Ride[] = [];
     try {
-      const raw = await AsyncStorage.getItem(STORAGE_KEY);
+      const raw = await readStored(STORAGE_KEY);
       if (raw) rides = JSON.parse(raw);
     } catch {
       // Unreadable history is treated as empty.

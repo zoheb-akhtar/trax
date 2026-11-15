@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { readStored } from '@/lib/storage';
 import Constants from 'expo-constants';
 import { createContext, use, useEffect, useState, type ReactNode } from 'react';
 
@@ -9,7 +10,7 @@ export type Settings = {
   units: 'km' | 'mi';
   /** Spoken turn directions and warnings */
   voice: boolean;
-  /** Where Velo's voice comes from. "bike" falls back to the phone when the bike can't be heard. */
+  /** Where Trax's voice comes from. "bike" falls back to the phone when the bike can't be heard. */
   speakFrom: SpeakFrom;
   /** Who is told after a crash. Stored on this phone only. */
   contactName: string;
@@ -22,7 +23,7 @@ export type Settings = {
   agentToken: string;
 };
 
-const STORAGE_KEY = 'velo.settings';
+const STORAGE_KEY = 'trax.settings';
 
 /**
  * The agent server runs on the same laptop as the app's development server, so its address
@@ -64,7 +65,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [loaded, setLoaded] = useState(false);
 
   useEffect(() => {
-    AsyncStorage.getItem(STORAGE_KEY)
+    readStored(STORAGE_KEY)
       .then((raw) => {
         if (!raw) return;
         const saved: Partial<Settings> = JSON.parse(raw);

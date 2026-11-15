@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { readStored } from '@/lib/storage';
 import * as Location from 'expo-location';
 
 import type { CameraId, DeviceMode, SecurityEvent } from '@/device/types';
@@ -22,7 +23,7 @@ export type SecurityEntry = {
   description?: string;
 };
 
-/** Where the bike was when Velo was armed. */
+/** Where the bike was when Trax was armed. */
 export type Parked = LatLon & { ts: number; place: string | null };
 
 /** Where the device's GPS last reported the bike, and when the phone heard it. */
@@ -52,7 +53,7 @@ const SEEN_EVERY_MS = 15000;
 /** The street name is looked up again once the bike is this far from where it was last named. */
 const RENAME_M = 40;
 
-const STORAGE_KEY = 'velo.security';
+const STORAGE_KEY = 'trax.security';
 const MAX_ENTRIES = 100;
 /** Ids of device events already handled, kept across reloads so cleared ones stay cleared. */
 const SEEN_KEPT = 300;
@@ -87,7 +88,7 @@ export class SecurityLog {
     this.loading = true;
     let stored: Partial<SecuritySnapshot> = {};
     try {
-      const raw = await AsyncStorage.getItem(STORAGE_KEY);
+      const raw = await readStored(STORAGE_KEY);
       if (raw) stored = JSON.parse(raw);
     } catch {
       // An unreadable log is treated as empty.

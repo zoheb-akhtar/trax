@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 import * as Notifications from 'expo-notifications';
 
 /**
- * Notifications from Velo.
+ * Notifications from Trax.
  *
  * - Banners the app shows itself, the moment it learns the bike was moved. These need the app
  *   to be open (or only just closed), since that is when it hears from the bike.
@@ -11,7 +11,7 @@ import * as Notifications from 'expo-notifications';
  *   gets the phone's push address for it. That needs an Expo project id (`eas init`).
  */
 
-/** Show Velo's notifications as banners even while the app is open. Call once at start-up. */
+/** Show Trax's notifications as banners even while the app is open. Call once at start-up. */
 export function setUpNotifications() {
   try {
     Notifications.setNotificationHandler({
@@ -27,7 +27,7 @@ export function setUpNotifications() {
   }
 }
 
-/** Asks for permission the first time. True if Velo may show notifications. */
+/** Asks for permission the first time. True if Trax may show notifications. */
 export async function allowNotifications() {
   try {
     const current = await Notifications.getPermissionsAsync();

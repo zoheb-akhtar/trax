@@ -67,7 +67,7 @@ export function PushWatcher() {
           method: 'POST',
           headers: {
             'content-type': 'application/json',
-            'x-api-key': cleanToken(agentToken) || 'velo-proxy',
+            'x-api-key': cleanToken(agentToken) || 'trax-proxy',
           },
           body: JSON.stringify({ pushToken: token, device }),
         });
@@ -92,7 +92,7 @@ export async function testPush(agentUrl: string, agentToken: string) {
   try {
     const response = await fetch(`${proxyUrl(agentUrl)}/v1/watch`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-api-key': cleanToken(agentToken) || 'velo-proxy' },
+      headers: { 'content-type': 'application/json', 'x-api-key': cleanToken(agentToken) || 'trax-proxy' },
       body: JSON.stringify({ test: true }),
     });
     const detail = await response.json().catch(() => null);
