@@ -403,7 +403,10 @@ class RoadModel:
         if 0.9 <= width <= 2.4 and lk == "line" and rk == "edge":
             return "bike_lane", 0.65, width  # narrow lane between a line and the curb (right-hand traffic)
         if 0.9 <= width <= 2.4 and lk == "line" and rk == "line":
-            return "bike_lane", 0.5, width  # buffered / painted both sides
+            # narrow + painted both sides: could be a bike lane, or a car lane measured with a wrong
+            # camera height. Weak evidence alone (below the alert threshold); a painted bike symbol
+            # (perception.py) or green paint confirms it
+            return "bike_lane", 0.45, width
         if width > 4.6:
             return "traffic_lane", 0.3, width  # wider than any lane: a middle line was missed (multi-lane)
         if width >= 2.6:

@@ -299,6 +299,8 @@ class Perception:
         self.cam_t = {c: 0.0 for c in cameras}
         self._light_prev = {}
         self._green_until = 0.0
+        self._pending = {}
+        self.road_view = None
 
     # ---- tracking ----------------------------------------------------------------------
     def update(self, camera, t, xyxy_norm, conf, cls_names, frame=None):
@@ -433,6 +435,8 @@ class Perception:
         ego: {"speed": m/s or None} from GPS. road: road.RoadModel.state() or None."""
         ego = ego or {}
         v_ego = ego.get("speed")
+        road = self._lane_evidence(road, now)
+        self.road_view = road
         live = [t for t in self.tracks.values()
                 if not t.handed_off and t.box is not None and t.confirmed()
                 and now - t.last_seen <= self.lost_grace_s]
@@ -495,11 +499,13 @@ class Perception:
             if road and x is not None and road.get("ok"):
                 d["inPath"] = _in_corridor(road, x, z, 0.9)
             threats = _threats(trk, d, ttc, riding, road, v_ego) if role(trk.camera) != "security" else []
+            # imminent (< 1.2 s): fire at once; anything else must hold for two cycles first
+            urgent = (ttc is not None and ttc < 1.2) or bool(d.get("cpa") and d["cpa"]["tS"] < 1.2)
             for kind, level, text in threats:
                 wanted[f"{kind}-{trk.gid}"] = {"id": f"{kind}-{trk.gid}", "kind": kind, "level": level, "text": text,
                                                "camera": facing(trk.camera), "source": trk.camera,
                                                "trackId": trk.gid, "bearingDeg": d.get("bearingDeg"),
-                                               "side": _side(d)}
+                                               "side": _side(d), "urgent": urgent}
             d["threat"] = max((LEVELS[lv] for _, lv, _ in threats), default=0)
             dets.append(d)
         # lead vehicle: the nearest thing ahead in the bike's path
@@ -524,6 +530,21 @@ class Perception:
             wanted[kind] = {"id": kind, "kind": kind, "level": level, "text": text, "camera": "front",
                             "source": "front", "trackId": -1, "bearingDeg": 0, "side": "ahead"}
         return dets, self._update_alerts(wanted, now), surroundings(dets, road)
+
+    def _lane_evidence(self, road, now):
+        """A bike symbol painted in the lane ahead (YOLO-World 'bike lane marking') is independent
+        proof of a bike lane: confirm a narrow lane as one (until ~5 s after the last symbol)."""
+        if not road or not road.get("ok"):
+            return road
+        for t in self.tracks.values():
+            if t.label == "bike lane marking" and now - t.last_seen < 0.5 and t.hist and t.hist[-1][2] is not None:
+                x, z = t.hist[-1][2], t.hist[-1][3]
+                if 0 < z < 25 and abs(x - _path_x(road, z)) < 1.5:
+                    self._marking_t = now
+        if now - getattr(self, "_marking_t", -99) < 5.0 and (road.get("laneWidthM") or 0) < 2.8:
+            road = dict(road, laneType="bike_lane", laneConfidence=max(road.get("laneConfidence", 0), 0.8),
+                        laneEvidence="bike symbol")
+        return road
 
     def _light_change(self, gid, colour, now, v_ego):
         """Tesla's green-light chime: the light we are waiting at turned green."""
@@ -561,11 +582,18 @@ class Perception:
         return list(best.values())
 
     def _update_alerts(self, wanted, now, hold_s=1.0):
+        # confirmation: a new alert must be wanted in two consecutive cycles (kills one-frame
+        # glitches), unless it is urgent (contact in under 1.2 s), which fires immediately
+        self._pending = {aid: n + 1 for aid, n in self._pending.items() if aid in wanted}
         for aid, a in wanted.items():
             if aid in self._alerts:
                 self._alerts[aid].update(a, lastTrue=now)
-            else:
+                continue
+            n = self._pending.get(aid, 0) + (0 if aid in self._pending else 1)
+            self._pending[aid] = n
+            if n >= 2 or a.get("urgent"):
                 self._alerts[aid] = {**a, "since": now, "lastTrue": now}
+                self._pending.pop(aid, None)
         for aid in [k for k, a in self._alerts.items() if now - a["lastTrue"] > hold_s]:
             del self._alerts[aid]
         # most severe first; at equal severity the more specific situation wins ("oncoming car in
@@ -576,7 +604,7 @@ class Perception:
         for a in out:  # one alert per tracked object: its most severe one
             top.setdefault(a["trackId"] if a["trackId"] >= 0 else a["id"], a)
         out = [a for a in out if top[a["trackId"] if a["trackId"] >= 0 else a["id"]] is a]
-        return [{k: v for k, v in a.items() if k != "lastTrue"} for a in out]
+        return [{k: v for k, v in a.items() if k not in ("lastTrue", "urgent")} for a in out]
 
 
 def _rank(t):

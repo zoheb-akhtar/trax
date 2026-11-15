@@ -26,7 +26,8 @@ DEFAULT_CONFIG = {
         # role: road_front = the road ahead; road_rear = the road behind; security = people at
         # the bike (faces, who is on it) and parked-mode watching.
         "front": {"role": "road_front", "hfov": 62.2, "vfov": 48.8, "height_m": 1.0, "pitch_deg": 4.0, "yaw_deg": 0},
-        "seat": {"role": "road_rear", "hfov": 70.0, "vfov": 43.0, "height_m": 0.85, "pitch_deg": 4.0, "yaw_deg": 180},
+        # Aluratek webcam: specs disagree (65 / 90 deg) -> measure it with tools/calibrate.py
+        "seat": {"role": "road_rear", "hfov": 78.0, "vfov": 48.3, "height_m": 0.85, "pitch_deg": 4.0, "yaw_deg": 180},
         "rear": {"role": "security", "hfov": 62.2, "vfov": 48.8, "height_m": 0.9, "pitch_deg": 0.0, "yaw_deg": 180},
     },
     # NeoPixel ring: which way LED 0 points (degrees, 0 = ahead, 90 = right) and its direction

@@ -267,6 +267,29 @@ Lessons:
 
 ---
 
+## 6b. Safety: how Velo avoids failing silently
+
+- **`health.py`, the safety monitor:**
+  - **Every camera:** frame age and rate. Road cameras need 8 fps or more, the security camera 2.
+  - **Perception:** loop rate and latency.
+  - **Road model, STM32 and GPS.**
+  - **Mount calibration** of each road camera.
+  - **When a part is down,** a `system` alert leads the list and says which warnings are unavailable. It's also spoken with `--voice`.
+  - **If perception stops,** detections are dropped, so the app never shows a frozen "all clear".
+- **Alert confirmation:** an alert must hold for 2 cycles before it fires, except imminent ones (contact in under 1.2 s), which fire at once.
+- **Focus mode:** when something dangerous is near, the optional passes (zoom, YOLO-World) are skipped to keep the loop fast.
+- **Bike lanes need evidence:** a curb next to a narrow lane, green paint, or a **painted bike symbol** seen by YOLO-World. A narrow lane painted on both sides alone stays below the alert threshold, because a wrong camera height can make a car lane look narrow.
+
+## 6c. Data engine: record, replay, calibrate
+
+- **Record:** `velo_brain.py --record captures/ride1` saves every camera (10 fps) plus every IMU / GPS line, time-stamped. It flushes about every second, so a crash loses at most a second.
+- **Replay:** `velo_brain.py --replay captures/ride1 [--show]` re-runs a recorded ride through the whole system, IMU and GPS included. This is how to tune thresholds and prove a fix on **real** rides.
+- **Calibrate:** `tools/calibrate.py [--camera seat] [--known 5]` draws a live metre grid on the road.
+  - Set the measured height, then click the base of an object at a known distance to solve the tilt exactly.
+  - Check a second distance and adjust the lens if needed, then press P to save. This marks the camera `calibrated` in the health report.
+  - **Seat webcam lens:** the specs disagree (65° or 90°), so the default of 78° must be measured.
+- **Tests:** `./run_tests.sh` runs everything: 13 traffic scenarios, 9 bike-lane checks, 11 park/ride checks, 8 safety-monitor checks, and 5 real-footage checks.
+
 ## 7. Status
 
 **Verified on the real hardware (2026-11-15):**
@@ -306,8 +329,18 @@ Lessons:
   - **`right_hook`** needs a predicted path that actually crosses yours.
 - Night-time image brightening was tested and **hurts** YOLO, so it isn't used.
 
+**Bike-lane logic** is verified on exact synthetic roads (`tests/test_bike_lanes.py`, 9/9). The cases are:
+- a line plus curb lane of 1.7 m
+- a green-painted lane
+- a 3.5 m car lane
+- a missed middle line
+- drifting out of the lane
+- a car stopped in the bike lane, with no alert for the same car in a car lane
+- a narrow two-line lane confirmed only by a bike symbol
+
 **Not yet verified:**
-- **Bike-lane detection on a real bike lane** (the samples are car lanes), and footage from Velo's own bike cameras. Record a ride, then run `tools/eval_road.py ride.mp4 --zoom`.
+- A **real** bike lane, through Velo's own cameras. Record a ride with `--record`, replay it, and check.
+- The mount calibration on the bike. Run `tools/calibrate.py` for front and seat.
 - Camera mount calibration (`velo_config.json`).
 - Crash and pothole detection on a real ride.
 - The bike power setup: board as USB host through the hub, on a power bank.

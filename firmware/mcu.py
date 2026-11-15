@@ -29,6 +29,7 @@ class Mcu:
         self.hb = None    # {"mode","ring","imu","gps","up","t"}
         self.last_rx = 0.0
         self._want = {}   # last mode / ring / config sent, re-sent after a reconnect
+        self.raw_listener = None  # e.g. capture.RideCapture.sensor: every line, for replay later
         self._lock = threading.Lock()
         threading.Thread(target=self._run, daemon=True, name="mcu").start()
 
@@ -128,6 +129,8 @@ class Mcu:
     def _handle(self, line):
         if not line:
             return
+        if getattr(self, "raw_listener", None):
+            self.raw_listener(line)
         now = time.time()
         p = line.split()
         try:
