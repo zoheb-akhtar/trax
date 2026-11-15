@@ -36,6 +36,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
       snapshotUrlFor,
       destination: destinationName,
       position,
+      bumps: state.bumps,
     });
   });
 

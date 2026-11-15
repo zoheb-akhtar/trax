@@ -62,6 +62,9 @@ Polled by the app about 4 times a second. Every field is optional; send what you
   without tracking, objects flicker. Keep the same id for as long as you track the object.
 - Do not clip or pad boxes more than the detector already does: the app estimates distance from
   box height and sideways position from the box centre.
+- **Keep detecting while armed** (`mode: "security"`), at least one frame every few seconds. The
+  app counts the other bikes (`bicycle`) and people (`person`) the cameras see while parked, for
+  its parking data: how full each rack gets and how busy it is. Only the counts are kept.
 
 ### How the app places objects in 3D
 
@@ -78,7 +81,8 @@ are off; capture at 4:3, or tell the app team the frame size and lens. "Mirrored
 app's geometry for a backwards-facing camera: **do not flip the rear image yourself.**
 
 A vehicle estimated to be within 7 m, and within 3.2 m to either side, shows "Vehicle close".
-- `events`: newest first. `kind` is `"tamper"`, `"motion"` or `"crash"`; other kinds are ignored.
+- `events`: newest first. `kind` is `"tamper"`, `"motion"`, `"crash"` or `"pothole"`; other
+  kinds are ignored. A pothole event also has `severity` and `position` (see Pothole detection).
   `ts` is Unix milliseconds.
 - `events[].id`: **unique across reboots**. A counter that restarts at 1 after a power cycle
   makes the app think a new theft is an old one. Use the time, e.g. `"evt-<ts>"`. The app
@@ -129,6 +133,25 @@ No body. A short beep and LED flash so the owner can find the bike. Does not add
 When the IMU sees a fall while in ride mode (a hard jolt followed by the bike lying on its
 side), add an event with `"kind": "crash"`. Do not sound the alarm. The app starts a
 countdown and then prepares a message to the rider's emergency contact.
+
+## Pothole detection
+
+While in ride mode, read the IMU's vertical acceleration at 100 Hz or more. A spike more than
+about 0.8 g beyond normal gravity, lasting under 0.2 s, while the bike is moving, is a pothole
+or kerb. Add an event:
+
+```json
+{ "id": "bump-1731600000000", "kind": "pothole", "ts": 1731600000000,
+  "severity": 1.7, "position": { "lat": 42.343, "lon": -71.0858 } }
+```
+
+- `severity`: the peak jolt beyond normal, in g. The app ignores anything under 0.8.
+- `position`: the GPS fix at that moment, if there is one; otherwise the app uses the phone's.
+- Wait about 2 s before reporting another, so one hole counts once.
+- A jolt followed by the bike staying on its side is a crash, not a pothole.
+
+The app pins each pothole on the ride's map. Across many bikes, the same spot felt again and
+again is a pothole worth fixing.
 
 ## Pictures of security events
 

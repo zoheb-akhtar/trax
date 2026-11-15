@@ -90,7 +90,7 @@ export class HttpSource extends SnapshotStore implements DeviceSource {
    * Asks the device to pretend something happened, through the test server's /debug routes.
    * A real device has no such routes, so this resolves false there.
    */
-  async debug(what: 'tamper' | 'crash' | 'car') {
+  async debug(what: 'tamper' | 'crash' | 'car' | 'pothole') {
     try {
       await this.request(`/debug/${what}`, { method: 'POST' });
       return true;
@@ -252,6 +252,19 @@ function parseState(json: any): DeviceState {
             id: eventId(e, i),
             kind: e.kind,
             ts: typeof e?.ts === 'number' ? e.ts : Date.now(),
+          }))
+      : [],
+    bumps: Array.isArray(json?.events)
+      ? json.events
+          .filter((e: any) => e?.kind === 'pothole' && typeof e?.severity === 'number')
+          .map((e: any, i: number) => ({
+            id: eventId(e, i),
+            ts: typeof e?.ts === 'number' ? e.ts : Date.now(),
+            severity: e.severity,
+            position:
+              typeof e?.position?.lat === 'number' && typeof e?.position?.lon === 'number'
+                ? { lat: e.position.lat, lon: e.position.lon }
+                : null,
           }))
       : [],
   };

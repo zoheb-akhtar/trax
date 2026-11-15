@@ -29,7 +29,27 @@ function onWorld([lat, lon]: Point, zoom: number) {
  * The path of a ride on a street map, zoomed to fit, with a red dot at each close pass.
  * The map loads from OpenStreetMap; without a connection the route still draws on its own.
  */
-export function RouteMap({ track, pins }: { track: Point[]; pins: Point[] }) {
+/** A dot drawn on the map with no route, e.g. a parking spot sized by how often it's used. */
+export type MapDot = { at: Point; radius: number; color: string };
+
+export function RouteMap({
+  track,
+  pins,
+  dots = [],
+  showRoute = true,
+  label = 'Map of the route ridden',
+}: {
+  /** The route, which the map is fitted to */
+  track: Point[];
+  /** Close passes, as red dots */
+  pins: Point[];
+  /** Other marks, such as potholes or parking spots */
+  dots?: MapDot[];
+  /** False to draw only the marks: the track is then just the points to fit the map to */
+  showRoute?: boolean;
+  label?: string;
+}) {
+  const route = showRoute;
   const [size, setSize] = useState({ width: 0, height: 0 });
   const ready = size.width > 0 && track.length > 0;
 
@@ -82,7 +102,7 @@ export function RouteMap({ track, pins }: { track: Point[]; pins: Point[] }) {
     <View
       style={styles.map}
       onLayout={(e) => setSize(e.nativeEvent.layout)}
-      accessibilityLabel="Map of the route ridden">
+      accessibilityLabel={label}>
       {tiles.map((tile) => (
         <Image
           key={tile.key}
@@ -95,13 +115,16 @@ export function RouteMap({ track, pins }: { track: Point[]; pins: Point[] }) {
       {ready && start && end && (
         <Svg width={size.width} height={size.height} style={StyleSheet.absoluteFill}>
           {/* A white casing under the line keeps it readable over busy streets. */}
-          <Polyline points={line} fill="none" stroke="#FFFFFF" strokeWidth={8} strokeLinejoin="round" strokeLinecap="round" />
-          <Polyline points={line} fill="none" stroke={Status.accent} strokeWidth={4.5} strokeLinejoin="round" strokeLinecap="round" />
+          {route && <Polyline points={line} fill="none" stroke="#FFFFFF" strokeWidth={8} strokeLinejoin="round" strokeLinecap="round" />}
+          {route && <Polyline points={line} fill="none" stroke={Status.accent} strokeWidth={4.5} strokeLinejoin="round" strokeLinecap="round" />}
+          {dots.map((d, i) => (
+            <Circle key={`dot-${i}`} cx={place(d.at).x} cy={place(d.at).y} r={d.radius} fill={d.color} fillOpacity={0.85} stroke="#fff" strokeWidth={2.5} />
+          ))}
           {pins.map((p, i) => (
             <Circle key={i} cx={place(p).x} cy={place(p).y} r={7} fill={Status.danger} stroke="#fff" strokeWidth={2.5} />
           ))}
-          <Circle cx={start.x} cy={start.y} r={7} fill="#fff" stroke="#111111" strokeWidth={3} />
-          <Circle cx={end.x} cy={end.y} r={8} fill="#111111" stroke="#fff" strokeWidth={2.5} />
+          {route && <Circle cx={start.x} cy={start.y} r={7} fill="#fff" stroke="#111111" strokeWidth={3} />}
+          {route && <Circle cx={end.x} cy={end.y} r={8} fill="#111111" stroke="#fff" strokeWidth={2.5} />}
         </Svg>
       )}
       <Text style={styles.credit}>© OpenStreetMap</Text>

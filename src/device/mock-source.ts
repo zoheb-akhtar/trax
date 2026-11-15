@@ -96,6 +96,14 @@ export class MockSource extends SnapshotStore implements DeviceSource {
     });
   }
 
+  /** Pretends the bike just hit a pothole. */
+  simulatePothole() {
+    const { state } = this.snapshot;
+    const ts = Date.now();
+    const bump = { id: `bump-${ts}`, ts, severity: 1.6 + Math.random(), position: state.position };
+    this.patchState({ bumps: [bump, ...state.bumps].slice(0, 20) });
+  }
+
   simulateTamper() {
     const { state } = this.snapshot;
     const ts = Date.now();

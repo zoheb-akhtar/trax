@@ -51,16 +51,18 @@ type Plan = {
   topSpeed: number;
   /** Where along the ride each close pass happened, 0 to 1 */
   passes: number[];
+  /** Where along the ride each pothole was felt, 0 to 1 */
+  bumps?: number[];
 };
 
 const PLANS: Plan[] = [
-  { daysAgo: 0, hour: 8.6, destination: 'Boston Public Library', corners: [SYMPHONY, MASS_AND_BOYLSTON, LIBRARY], pace: 17, topSpeed: 27, passes: [0.3] },
-  { daysAgo: 1, hour: 17.7, destination: 'Symphony Hall', corners: [MIT, HARVARD_BRIDGE, MASS_AND_BOYLSTON, SYMPHONY], pace: 18, topSpeed: 31, passes: [0.25, 0.7] },
-  { daysAgo: 1, hour: 8.5, destination: 'MIT', corners: [SYMPHONY, MASS_AND_BOYLSTON, HARVARD_BRIDGE, MIT], pace: 19, topSpeed: 30, passes: [] },
-  { daysAgo: 2, hour: 12.4, destination: null, corners: [SYMPHONY, NORTHEASTERN, FENWAY, MASS_AND_BOYLSTON, SYMPHONY], pace: 16, topSpeed: 26, passes: [0.55] },
+  { daysAgo: 0, hour: 8.6, destination: 'Boston Public Library', corners: [SYMPHONY, MASS_AND_BOYLSTON, LIBRARY], pace: 17, topSpeed: 27, passes: [0.3], bumps: [0.45] },
+  { daysAgo: 1, hour: 17.7, destination: 'Symphony Hall', corners: [MIT, HARVARD_BRIDGE, MASS_AND_BOYLSTON, SYMPHONY], pace: 18, topSpeed: 31, passes: [0.25, 0.7], bumps: [0.55, 0.8] },
+  { daysAgo: 1, hour: 8.5, destination: 'MIT', corners: [SYMPHONY, MASS_AND_BOYLSTON, HARVARD_BRIDGE, MIT], pace: 19, topSpeed: 30, passes: [], bumps: [0.2] },
+  { daysAgo: 2, hour: 12.4, destination: null, corners: [SYMPHONY, NORTHEASTERN, FENWAY, MASS_AND_BOYLSTON, SYMPHONY], pace: 16, topSpeed: 26, passes: [0.55], bumps: [0.35, 0.9] },
   { daysAgo: 3, hour: 18.1, destination: 'Symphony Hall', corners: [LIBRARY, PRUDENTIAL, SYMPHONY], pace: 15, topSpeed: 24, passes: [] },
   { daysAgo: 3, hour: 8.7, destination: 'Boston Public Library', corners: [SYMPHONY, PRUDENTIAL, LIBRARY], pace: 16, topSpeed: 25, passes: [] },
-  { daysAgo: 5, hour: 10.2, destination: 'Fenway Park', corners: [SYMPHONY, MASS_AND_BOYLSTON, FENWAY], pace: 17, topSpeed: 28, passes: [0.4, 0.45, 0.8] },
+  { daysAgo: 5, hour: 10.2, destination: 'Fenway Park', corners: [SYMPHONY, MASS_AND_BOYLSTON, FENWAY], pace: 17, topSpeed: 28, passes: [0.4, 0.45, 0.8], bumps: [0.25, 0.6] },
 ];
 
 /** The sample rides, dated back from `now`. */
@@ -83,6 +85,12 @@ export function sampleWeek(now: number): Ride[] {
       file: null,
       at: track[Math.round(along * (track.length - 1))],
     }));
+    const potholes = (plan.bumps ?? []).map((along, n) => ({
+      id: `${id}-pothole-${n}`,
+      ts: startedAt + duration * along,
+      severity: 1.2 + ((n * 7 + index) % 5) * 0.3,
+      at: track[Math.round(along * (track.length - 1))],
+    }));
     return {
       id,
       startedAt,
@@ -94,6 +102,7 @@ export function sampleWeek(now: number): Ride[] {
       destination: plan.destination,
       moments,
       track,
+      potholes,
     };
   }).sort((a, b) => b.startedAt - a.startedAt);
 }

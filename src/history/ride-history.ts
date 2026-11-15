@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { isCloseVehicle, toWorld } from '@/device/geometry';
-import type { CameraId, Detection, DeviceMode } from '@/device/types';
+import type { CameraId, Detection, DeviceMode, RoadBump } from '@/device/types';
 
 import { deletePictureFolder, deleteRidePictures, savePicture } from './files';
 
@@ -15,6 +15,16 @@ export type RideMoment = {
   /** Picture path relative to the documents folder, or null if none was saved */
   file: string | null;
   /** Where it happened, as [lat, lon], when the phone knew its position */
+  at?: [number, number];
+};
+
+/** A pothole or bad patch of road felt during a ride. */
+export type Pothole = {
+  id: string;
+  ts: number;
+  /** Peak vertical jolt beyond normal, in g */
+  severity: number;
+  /** Where it happened, as [lat, lon], when known */
   at?: [number, number];
 };
 
@@ -32,6 +42,8 @@ export type Ride = {
   moments: RideMoment[];
   /** The path ridden, as [lat, lon] points. Missing on rides saved by older versions. */
   track?: [number, number][];
+  /** Potholes felt by the IMU. Missing on rides saved by older versions. */
+  potholes?: Pothole[];
 };
 
 export type RideHistorySnapshot = { loaded: boolean; rides: Ride[] };
@@ -45,6 +57,8 @@ export type RideInput = {
   destination: string | null;
   /** The phone's position, when known */
   position: { lat: number; lon: number } | null;
+  /** Road bumps the device has reported, newest first */
+  bumps: RoadBump[];
 };
 
 const STORAGE_KEY = 'velo.rides';
@@ -70,6 +84,8 @@ const STILL_KMH = 2;
 const TRACK_STEP_M = 8;
 const MAX_TRACK_POINTS = 3000;
 const PUBLISH_EVERY_MS = 2000;
+/** Jolts smaller than this (in g beyond normal) are ordinary rough road, not potholes. */
+const MIN_POTHOLE_G = 0.8;
 const SAVE_EVERY_MS = 15000;
 
 /** Records rides as they happen and keeps the list of past ones. One instance for the app. */
@@ -86,6 +102,9 @@ export class RideHistory {
   private capturing = false;
   private stillSince: number | null = null;
   private loading = false;
+  /** Bumps already looked at, so each is recorded once. */
+  private seenBumps = new Set<string>();
+  private bumpsPrimed = false;
 
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -125,6 +144,12 @@ export class RideHistory {
     const now = Date.now();
     const ride = this.active;
 
+    // Bumps reported before the app was watching (an old list on the device) aren't new.
+    const fresh = input.bumps.filter((b) => !this.seenBumps.has(b.id));
+    for (const b of fresh) this.seenBumps.add(b.id);
+    const newBumps = this.bumpsPrimed ? fresh : [];
+    this.bumpsPrimed = true;
+
     if (!ride) {
       if (input.mode === 'ride' && (input.speedKmh ?? 0) > START_KMH) this.begin(now, input);
       return;
@@ -148,6 +173,18 @@ export class RideHistory {
     else if (now - this.stillSince > STANDSTILL_MS) {
       this.end(this.stillSince);
       return;
+    }
+
+    // Potholes, placed where the device's GPS felt them, or else where the phone is.
+    for (const bump of newBumps) {
+      if (bump.severity < MIN_POTHOLE_G) continue;
+      const where = bump.position ?? input.position;
+      (ride.potholes ??= []).push({
+        id: bump.id,
+        ts: now,
+        severity: bump.severity,
+        at: where ? [where.lat, where.lon] : undefined,
+      });
     }
 
     // The path ridden, one point every few metres.
@@ -223,6 +260,7 @@ export class RideHistory {
       destination: input.destination,
       moments: [],
       track: [],
+      potholes: [],
     };
     this.stillSince = null;
     this.lastTick = now;

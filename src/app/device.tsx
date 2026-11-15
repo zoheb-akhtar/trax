@@ -12,6 +12,7 @@ import { Card } from '@/components/ui/card';
 import { Hairline, Spacing, Type } from '@/constants/theme';
 import { useDevice } from '@/device/device-provider';
 import { useRideHistory } from '@/history/history-provider';
+import { useParking } from '@/parking/parking-provider';
 import { useSecurity } from '@/security/security-provider';
 import { normalizeHost } from '@/device/http-source';
 import { useTheme } from '@/hooks/use-theme';
@@ -27,6 +28,7 @@ export default function DeviceScreen() {
     simulateTamper,
     simulateCrash,
     simulateCar,
+    simulatePothole,
     testRoutes,
     hasSpeaker,
   } = useDevice();
@@ -50,10 +52,11 @@ export default function DeviceScreen() {
   };
   const { rides, clearRides, loadSampleWeek } = useRideHistory();
   const { entries, clearEntries } = useSecurity();
+  const { stays, clearParking, loadSampleParking } = useParking();
   const clearHistory = () =>
     Alert.alert(
       'Clear all history?',
-      `This deletes ${rides.length} rides and ${entries.length} security events from this phone, with their pictures. It can't be undone.`,
+      `This deletes ${rides.length} rides, ${stays.length} parking stays and ${entries.length} security events from this phone, with their pictures. It can't be undone.`,
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -61,6 +64,7 @@ export default function DeviceScreen() {
           style: 'destructive',
           onPress: () => {
             clearRides();
+            clearParking();
             clearEntries();
           },
         },
@@ -257,6 +261,19 @@ export default function DeviceScreen() {
                 }}
               />
             )}
+            {simulatePothole && (
+              <Button
+                title="Simulate a pothole"
+                variant="secondary"
+                onPress={() => {
+                  if (state.mode !== 'ride') {
+                    Alert.alert('Start a ride first', 'Potholes are recorded while riding.');
+                    return;
+                  }
+                  simulatePothole();
+                }}
+              />
+            )}
             {simulateCrash && (
               <Button title="Simulate a crash" variant="secondary" onPress={simulateCrash} />
             )}
@@ -265,10 +282,18 @@ export default function DeviceScreen() {
         <Card>
           <ThemedText type="label">History</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            {rides.length} {rides.length === 1 ? 'ride' : 'rides'} and {entries.length} security{' '}
+            {rides.length} {rides.length === 1 ? 'ride' : 'rides'}, {stays.length} parking{' '}
+            {stays.length === 1 ? 'stay' : 'stays'} and {entries.length} security{' '}
             {entries.length === 1 ? 'event' : 'events'} saved on this phone.
           </ThemedText>
-          <Button title="Load a sample week of rides" variant="secondary" onPress={loadSampleWeek} />
+          <Button
+            title="Load a sample week"
+            variant="secondary"
+            onPress={() => {
+              loadSampleWeek();
+              loadSampleParking();
+            }}
+          />
           <Button title="Clear all history" variant="secondary" onPress={clearHistory} />
         </Card>
       </ScrollView>

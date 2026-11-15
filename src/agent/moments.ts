@@ -90,6 +90,7 @@ export async function rideFacts(ride: Ride, rides: Ride[]): Promise<string> {
     `Ride just finished${ride.destination ? ` to ${ride.destination}` : ''}.`,
     `Distance: ${formatDistance(ride.distance)}. Time: ${formatDuration(seconds)}. Top speed: ${top.value} ${top.unit.toLowerCase()}.`,
     `Close passes (a vehicle passing close): ${ride.closePasses}.`,
+    `Potholes felt (logged to the street map): ${ride.potholes?.length ?? 0}.`,
     `Safety score: ${score} out of 100 (${safetyLabel(score)}). 100 means no close passes.`,
   ];
 

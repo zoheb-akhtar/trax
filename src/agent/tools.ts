@@ -358,7 +358,7 @@ export async function runTool(name: string, input: unknown, world: AgentWorld): 
       const week = done.filter((ride) => ride.startedAt > weekAgo);
       const lines = done.slice(0, 5).map((ride) => {
         const seconds = ((ride.endedAt ?? ride.lastSeen) - ride.startedAt) / 1000;
-        return `${new Date(ride.startedAt).toLocaleDateString([], { weekday: 'short' })} ${clock(ride.startedAt)}${ride.destination ? ` to ${ride.destination}` : ''}: ${formatDistance(ride.distance)}, ${formatDuration(seconds)}, ${ride.closePasses} close passes, safety ${safetyScore(ride)}/100`;
+        return `${new Date(ride.startedAt).toLocaleDateString([], { weekday: 'short' })} ${clock(ride.startedAt)}${ride.destination ? ` to ${ride.destination}` : ''}: ${formatDistance(ride.distance)}, ${formatDuration(seconds)}, ${ride.closePasses} close passes, ${ride.potholes?.length ?? 0} potholes, safety ${safetyScore(ride)}/100`;
       });
       const total = week.reduce((sum, ride) => sum + ride.distance, 0);
       const passes = week.reduce((sum, ride) => sum + ride.closePasses, 0);

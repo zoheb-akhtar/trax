@@ -46,6 +46,8 @@ export function DemoDirector({ riding }: { riding: boolean }) {
         // Preview rides the planned route by itself, so the bike moves on screen indoors.
         if (nav.getSnapshot().route) nav.start(true);
         later(1500, () => device.simulateCar?.());
+        // A pothole on the way, which shows on the ride map afterwards.
+        later(4500, () => device.simulatePothole?.());
         later(7500, () => agent.ask('Anything behind me?'));
       },
       () => {

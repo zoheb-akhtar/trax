@@ -23,6 +23,7 @@ import AppTabs from '@/components/app-tabs';
 import { DeviceProvider } from '@/device/device-provider';
 import { HistoryProvider } from '@/history/history-provider';
 import { NavProvider } from '@/nav/nav-provider';
+import { ParkingProvider } from '@/parking/parking-provider';
 import { RideUiProvider } from '@/ride-ui/ride-ui-provider';
 import { SecurityProvider } from '@/security/security-provider';
 import { PushWatcher } from '@/components/push-watcher';
@@ -67,6 +68,7 @@ export default function RootLayout() {
           <NavProvider>
             <HistoryProvider>
               <SecurityProvider>
+                <ParkingProvider>
                 <RideUiProvider>
                   <AgentProvider>
                     <AppTabs />
@@ -79,6 +81,7 @@ export default function RootLayout() {
                     <PushWatcher />
                   </AgentProvider>
                 </RideUiProvider>
+                </ParkingProvider>
               </SecurityProvider>
             </HistoryProvider>
           </NavProvider>

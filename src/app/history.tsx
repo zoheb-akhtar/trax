@@ -17,6 +17,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
+import { ParkingHistory } from '@/components/parking-history';
 import { RouteMap } from '@/components/route-map';
 import { Screen } from '@/components/screen';
 import { ScreenHeader } from '@/components/screen-header';
@@ -37,6 +38,7 @@ import {
   weekStart,
 } from '@/history/ride-history';
 import { formatDistance, formatSpeed } from '@/nav/geo';
+import { useParking } from '@/parking/parking-provider';
 import { useSecurity } from '@/security/security-provider';
 
 const time = (ts: number, seconds = false) =>
@@ -90,7 +92,8 @@ function byWeek<T>(items: T[], weekOf: (item: T) => number, weeks: number) {
 export default function HistoryScreen() {
   const { loaded, rides, deleteRide } = useRideHistory();
   const security = useSecurity();
-  const [tab, setTab] = useState<'rides' | 'security'>('rides');
+  const parking = useParking();
+  const [tab, setTab] = useState<'rides' | 'parking' | 'security'>('rides');
   const [openId, setOpenId] = useState<string | null>(null);
   const [openEntryId, setOpenEntryId] = useState<string | null>(null);
   // How many weeks back each list goes. Both start at this week; "Show earlier" adds one.
@@ -103,6 +106,7 @@ export default function HistoryScreen() {
     ts >= thisWeek ? 0 : 1 + Math.floor((thisWeek - ts - 1) / WEEK_MS);
   const ridesThisWeek = rides.filter((r) => weeksAgo(r.startedAt) === 0).length;
   const entriesThisWeek = security.entries.filter((e) => weeksAgo(e.ts) === 0).length;
+  const staysThisWeek = parking.stays.filter((s) => weeksAgo(s.startedAt) === 0).length;
   const rideGroups = byWeek(rides, (r) => weeksAgo(r.startedAt), rideWeeks);
   const entryGroups = byWeek(security.entries, (e) => weeksAgo(e.ts), securityWeeks);
   const open = rides.find((ride) => ride.id === openId) ?? null;
@@ -112,7 +116,7 @@ export default function HistoryScreen() {
     <Screen>
       <ScreenHeader title="History" />
       <View style={styles.tabs} accessibilityRole="tablist">
-        {(['rides', 'security'] as const).map((t) => (
+        {(['rides', 'parking', 'security'] as const).map((t) => (
           <Pressable
             key={t}
             onPress={() => setTab(t)}
@@ -121,13 +125,21 @@ export default function HistoryScreen() {
             style={[styles.tab, tab === t && styles.tabSelected]}
           >
             <Text style={[styles.tabText, tab === t && styles.tabTextSelected]}>
-              {t === 'rides' ? `Rides · ${ridesThisWeek}` : `Security · ${entriesThisWeek}`}
+              {t === 'rides'
+                ? `Rides · ${ridesThisWeek}`
+                : t === 'parking'
+                  ? `Parking · ${staysThisWeek}`
+                  : `Security · ${entriesThisWeek}`}
             </Text>
           </Pressable>
         ))}
       </View>
 
-      {tab === 'security' ? (
+      {tab === 'parking' ? (
+        <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
+          <ParkingHistory stays={parking.stays} since={thisWeek} />
+        </ScrollView>
+      ) : tab === 'security' ? (
         <ScrollView contentContainerStyle={styles.list} showsVerticalScrollIndicator={false}>
           {security.loaded && security.entries.length === 0 ? (
             <ThemedText themeColor="textSecondary">
@@ -344,6 +356,7 @@ function RideDetail({
   const score = safetyScore(ride);
   const track = ride.track ?? [];
   const pins = closePasses.flatMap((m) => (m.at ? [m.at] : []));
+  const potholes = (ride.potholes ?? []).flatMap((p) => (p.at ? [p.at] : []));
   const share = () =>
     Share.share({
       message: `Velo ride: ${formatDistance(ride.distance)} in ${duration(ride)}, ${
@@ -430,10 +443,20 @@ function RideDetail({
         {track.length > 1 && (
           <>
             <ThemedText type="label">Route</ThemedText>
-            <RouteMap track={track} pins={pins} />
-            {pins.length > 0 && (
+            <RouteMap
+              track={track}
+              pins={pins}
+              dots={potholes.map((at) => ({ at, radius: 6, color: Status.warn }))}
+            />
+            {(pins.length > 0 || potholes.length > 0) && (
               <ThemedText type="small" themeColor="textSecondary">
-                Red dots are close passes.
+                {[
+                  pins.length > 0 && 'Red dots are close passes.',
+                  potholes.length > 0 &&
+                    `Orange dots are potholes (${potholes.length}), felt by Velo's motion sensor.`,
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
               </ThemedText>
             )}
           </>

@@ -14,6 +14,7 @@ the three places marked REPLACE:
 Run:   python3 velo_server.py            (then point the app at <this-ip>:8000)
 Fake a theft:  press Enter in this terminal, or  curl -X POST localhost:8000/debug/tamper
 Fake a close pass:  curl -X POST localhost:8000/debug/car
+Fake a pothole:     curl -X POST localhost:8000/debug/pothole
 """
 
 from __future__ import annotations
@@ -175,6 +176,30 @@ class Device:
                 )
         return out
 
+    def detect_parked(self, elapsed: float) -> list[dict]:
+        """While parked: what the front camera sees at a bike rack.
+
+        Real version: keep running the model while armed (a frame every few seconds is
+        enough) so the app can count the other bikes at the rack and people passing. The app
+        turns this into anonymous parking data: how full racks get, and for how long.
+        """
+        # Other bikes locked up beside this one; one arrives and leaves every so often.
+        slots = [(-1.6, -3.0), (-0.8, -3.2), (0.0, -3.4), (0.8, -3.2), (1.6, -3.0), (2.4, -3.6)]
+        present = 3 + int((math.sin(elapsed / 40) + 1) * 1.5)  # 3 to 6 bikes
+        out = []
+        for i, (x, z) in enumerate(slots[:present]):
+            seen = to_box("bicycle", x, z)
+            if seen:
+                camera, box = seen
+                out.append({"id": 9000 + i, "label": "bicycle", "confidence": 0.85, "box": box, "camera": camera})
+        # Now and then someone walks past the rack.
+        if int(elapsed / 15) % 3 == 0:
+            seen = to_box("person", 3.0 - (elapsed % 15) * 0.4, -6.0)
+            if seen:
+                camera, box = seen
+                out.append({"id": 9100 + int(elapsed / 45), "label": "person", "confidence": 0.9, "box": box, "camera": camera})
+        return out
+
     def summon_car(self) -> None:
         """Testing only: brings the close-passing car up behind the bike now."""
         with self.lock:
@@ -211,6 +236,31 @@ class Device:
             del self.events[20:]
         print("[event] crash detected")
 
+    def pothole(self, severity: float | None = None) -> None:
+        """Call this when the IMU feels a sharp jolt while riding.
+
+        Real version (on the microcontroller): read the MPU6050's vertical acceleration
+        at 100 Hz or more. While the bike is moving, a spike more than ~0.8 g beyond normal
+        gravity, lasting under 0.2 s, is a pothole or kerb. Report the peak as "severity" (g),
+        with the GPS position, and wait ~2 s before reporting another so one hole counts once.
+        A spike followed by the bike staying tilted over is a crash instead (see crash()).
+        """
+        with self.lock:
+            now = int(time.time() * 1000)
+            g = round(severity if severity is not None else 1.0 + random.random() * 1.5, 2)
+            self.events.insert(
+                0,
+                {
+                    "id": f"bump-{now}",
+                    "kind": "pothole",
+                    "ts": now,
+                    "severity": g,
+                    "position": {"lat": self.lat, "lon": self.lon},
+                },
+            )
+            del self.events[20:]
+        print(f"[event] pothole ({g} g)")
+
     # ---- Called by the HTTP handlers -------------------------------------------------
     def set_mode(self, mode: str) -> None:
         with self.lock:
@@ -245,10 +295,14 @@ class Device:
     def run(self) -> None:
         """Background loop: keeps detections, speed and battery up to date."""
         dt = 1 / SIM_HZ
+        next_bump = time.time() + 40 + random.random() * 50
         while True:
+            if self.mode == "ride" and time.time() > next_bump:
+                self.pothole()  # now and then the road is rough
+                next_bump = time.time() + 40 + random.random() * 50
             elapsed = time.time() - self.started
             riding = self.mode == "ride"
-            detections = self.detect(dt) if riding else []
+            detections = self.detect(dt) if riding else self.detect_parked(elapsed)
             with self.lock:
                 self.detections = detections
                 self.speed_kmh = 22 + math.sin(elapsed / 3) * 4 if riding else 0.0
@@ -375,6 +429,9 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True})
         elif url.path == "/debug/crash":  # testing only: remove on the real device
             DEVICE.crash()
+            self._json(200, {"ok": True})
+        elif url.path == "/debug/pothole":  # testing only: the bike hits a pothole
+            DEVICE.pothole(2.2)
             self._json(200, {"ok": True})
         elif url.path == "/debug/car":  # testing only: a car comes up close behind
             DEVICE.summon_car()

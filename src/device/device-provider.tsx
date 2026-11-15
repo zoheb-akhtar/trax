@@ -35,6 +35,8 @@ type DeviceContextValue = DeviceSnapshot & {
   simulateCrash: (() => void) | null;
   /** Only with a device that has test routes (the laptop test server); false if it has none. */
   simulateCar: (() => Promise<boolean>) | null;
+  /** Pretends the bike hit a pothole (simulated device or the laptop test server). */
+  simulatePothole: (() => void) | null;
   /** Whether the connected device is driven through its test routes rather than built in */
   testRoutes: boolean;
   chirp(): void;
@@ -147,6 +149,14 @@ function ConnectedProvider({
             }
           : null,
     simulateCar: source instanceof HttpSource ? () => source.debug('car') : null,
+    simulatePothole:
+      source instanceof MockSource
+        ? () => source.simulatePothole()
+        : source instanceof HttpSource
+          ? () => {
+              source.debug('pothole');
+            }
+          : null,
     testRoutes: source instanceof HttpSource,
     chirp: () => source.chirp(),
     sayOnBike: (text, urgent) => source.say(text, urgent),

@@ -29,6 +29,17 @@ export type SecurityEvent = {
   ts: number;
 };
 
+/** A sharp jolt felt by the IMU while riding: a pothole, a kerb, a bad patch of road. */
+export type RoadBump = {
+  id: string;
+  /** Unix time in milliseconds */
+  ts: number;
+  /** How hard the jolt was: peak vertical acceleration beyond normal, in g */
+  severity: number;
+  /** Where it happened, from the device's GPS, if it has a fix */
+  position: LatLon | null;
+};
+
 export type DeviceState = {
   mode: DeviceMode;
   /** True while the device's alarm is sounding */
@@ -45,6 +56,8 @@ export type DeviceState = {
   detections: Detection[];
   /** Newest first */
   events: SecurityEvent[];
+  /** Road bumps felt while riding, newest first (pothole events from the device) */
+  bumps: RoadBump[];
 };
 
 export type Connection = 'simulated' | 'connecting' | 'connected' | 'offline';
@@ -88,4 +101,5 @@ export const EMPTY_STATE: DeviceState = {
   cameras: ['front'],
   detections: [],
   events: [],
+  bumps: [],
 };
