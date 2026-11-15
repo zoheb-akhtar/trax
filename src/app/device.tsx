@@ -19,7 +19,7 @@ export default function DeviceScreen() {
   const { settings, updateSettings, state, connection, simulateTamper, simulateCrash } =
     useDevice();
   const prefs = useSettings();
-  const { rides, clearRides } = useRideHistory();
+  const { rides, clearRides, loadSampleWeek } = useRideHistory();
   const { entries, clearEntries } = useSecurity();
   const clearHistory = () =>
     Alert.alert(
@@ -184,8 +184,10 @@ export default function DeviceScreen() {
         <Card>
           <ThemedText type="label">History</ThemedText>
           <ThemedText type="small" themeColor="textSecondary">
-            {rides.length} rides and {entries.length} security events are saved on this phone.
+            {rides.length} {rides.length === 1 ? 'ride' : 'rides'} and {entries.length} security{' '}
+            {entries.length === 1 ? 'event' : 'events'} saved on this phone.
           </ThemedText>
+          <Button title="Load a sample week of rides" variant="secondary" onPress={loadSampleWeek} />
           <Button title="Clear all history" variant="secondary" onPress={clearHistory} />
         </Card>
       </ScrollView>

@@ -4,10 +4,13 @@ import { useDevice } from '@/device/device-provider';
 import { useNav } from '@/nav/nav-provider';
 
 import { RideHistory, type RideHistorySnapshot } from './ride-history';
+import { sampleWeek } from './sample-week';
 
 type HistoryContextValue = RideHistorySnapshot & {
   deleteRide(id: string): void;
   clearRides(): void;
+  /** Fills History with a believable week of rides, for showing the app. */
+  loadSampleWeek(): void;
 };
 
 const HistoryContext = createContext<HistoryContextValue | null>(null);
@@ -42,6 +45,7 @@ export function HistoryProvider({ children }: { children: ReactNode }) {
         ...snapshot,
         deleteRide: (id) => history.delete(id),
         clearRides: () => history.clear(),
+        loadSampleWeek: () => history.seed(sampleWeek(Date.now())),
       }}>
       {children}
     </HistoryContext>

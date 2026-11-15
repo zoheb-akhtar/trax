@@ -192,6 +192,16 @@ export class RideHistory {
     this.save();
   }
 
+  /** Adds ready-made rides (the sample week), replacing any with the same ids. */
+  seed(rides: Ride[]) {
+    const ids = new Set(rides.map((ride) => ride.id));
+    this.finished = [...rides, ...this.finished.filter((ride) => !ids.has(ride.id))].sort(
+      (a, b) => b.startedAt - a.startedAt,
+    );
+    this.publish();
+    this.save();
+  }
+
   /** Forgets every ride and deletes their pictures. A ride in progress starts again from zero. */
   clear() {
     this.active = null;

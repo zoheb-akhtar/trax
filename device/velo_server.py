@@ -13,6 +13,7 @@ the three places marked REPLACE:
 
 Run:   python3 velo_server.py            (then point the app at <this-ip>:8000)
 Fake a theft:  press Enter in this terminal, or  curl -X POST localhost:8000/debug/tamper
+Fake a close pass:  curl -X POST localhost:8000/debug/car
 """
 
 from __future__ import annotations
@@ -84,12 +85,15 @@ class Device:
         self.detections: list[dict] = []
         self.started = time.time()
         self._next_id = 1
-        # Simulated traffic: [id, label, x, z, speed along z (m/s), respawn z, leave z]
+        # Simulated traffic:
+        # [id, label, x, z, speed along z (m/s), respawn z, leave z, extra respawn distance]
+        # The first car passes close enough to count as a close pass, so it comes round only
+        # every minute or two; the rest keep the scene busy without setting off warnings.
         self._tracks = [
-            [self._new_id(), "car", -2.0, 22.0, -4.0, 30.0, -45.0],
-            [self._new_id(), "car", -5.5, -10.0, -7.0, 35.0, -60.0],
-            [self._new_id(), "bicycle", -0.9, 14.0, -1.6, 22.0, -38.0],  # another cyclist overtaking
-            [self._new_id(), "person", 2.4, -30.0, 6.0, -35.0, 12.0],
+            [self._new_id(), "car", -2.0, 22.0, -4.0, 150.0, -45.0, 500.0],
+            [self._new_id(), "car", -5.5, -10.0, -7.0, 35.0, -60.0, 25.0],
+            [self._new_id(), "bicycle", -0.9, 14.0, -1.6, 60.0, -38.0, 120.0],  # a cyclist overtaking
+            [self._new_id(), "person", 2.4, -30.0, 6.0, -35.0, 12.0, 25.0],
         ]
 
     def _new_id(self) -> int:
@@ -112,7 +116,7 @@ class Device:
             passed = t[3] < t[6] if t[4] < 0 else t[3] > t[6]
             if passed:
                 t[0] = self._new_id()
-                t[3] = t[5] + random.random() * 25 * (1 if t[5] >= 0 else -1)
+                t[3] = t[5] + random.random() * t[7] * (1 if t[5] >= 0 else -1)
             seen = to_box(t[1], t[2], t[3])
             if seen:
                 camera, box = seen
@@ -120,6 +124,12 @@ class Device:
                     {"id": t[0], "label": t[1], "confidence": 0.9, "box": box, "camera": camera}
                 )
         return out
+
+    def summon_car(self) -> None:
+        """Testing only: brings the close-passing car up behind the bike now."""
+        with self.lock:
+            self._tracks[0][0] = self._new_id()
+            self._tracks[0][3] = 28.0
 
     # ---- REPLACE 3: the microcontroller (IMU, buzzer, LEDs) -------------------------
     def arm(self, armed: bool) -> None:
@@ -298,6 +308,9 @@ class Handler(BaseHTTPRequestHandler):
             self._json(200, {"ok": True})
         elif url.path == "/debug/crash":  # testing only: remove on the real device
             DEVICE.crash()
+            self._json(200, {"ok": True})
+        elif url.path == "/debug/car":  # testing only: a car comes up close behind
+            DEVICE.summon_car()
             self._json(200, {"ok": True})
         elif url.path == "/debug/tamper":  # testing only: remove on the real device
             DEVICE.tamper()
