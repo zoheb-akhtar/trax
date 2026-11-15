@@ -58,6 +58,9 @@ For the app team. The device (today: `velo_brain.py` on a Mac standing in for th
   "road": {                            // ride mode, front camera
     "ok": true, "laneType": "bike_lane" | "traffic_lane" | "unknown", "laneConfidence": 0.65,
     "laneWidthM": 1.7, "offsetM": 0.2,              // + = right of the lane centre
+    "laneStableS": 3.2,                             // how long the lane type has held (voted over ~2 s)
+    "multiLane": true,                              // width > 4.6 m: a middle line was missed
+    "pitchDeg": -1.5,                               // camera tilt, self-calibrated from the lane vanishing point
     "leftBoundary":  {"type": "line" | "edge", "distanceM": 0.9, "points": [[x, z], ...]},
     "rightBoundary": {...},
     "egoPath": [[x, z], ...]           // predicted path, 0-20 m ahead (Tesla's blue ribbon)

@@ -17,6 +17,7 @@ Low Power Mode via OpenCV; much faster with `pip install onnxruntime`, used auto
 
 from __future__ import annotations
 
+import math
 import os
 import threading
 import time
@@ -111,6 +112,9 @@ class RoadModel:
         self.hz, self.infer_ms = 0.0, 0.0
         self._lut = None
         self._fits = {"left": None, "right": None}  # smoothed (coeffs, type, t)
+        self.auto_pitch = True
+        self._votes = __import__("collections").deque()
+        self._pitch0, self._pitch_est, self._pitch_n = cam.pitch, None, 0
         threading.Thread(target=self._run, daemon=True, name="road").start()
 
     # ---- main loop ----------------------------------------------------------------------
@@ -148,26 +152,77 @@ class RoadModel:
 
     # ---- geometry helpers -----------------------------------------------------------------
     def _ground_lut(self, h, w):
-        """(x, z) on the road for every mask pixel (NaN above the horizon), cached."""
-        key = (h, w, self.cam.pitch, self.cam.h, self.cam.fx, self.cam.fy)
+        """(x, z) on the road for every mask pixel (NaN above the horizon), cached per pitch."""
+        cam = self.cam
+        key = (h, w, round(cam.pitch, 4), cam.h, cam.fx, cam.fy, cam.backward)
         if self._lut is None or self._lut[0] != key:
-            X = np.full((h, w), np.nan, np.float32)
-            Z = np.full((h, w), np.nan, np.float32)
-            for r in range(h):
-                v = (r + 0.5) / h
-                for c in range(w):
-                    p = self.cam.ground_point((c + 0.5) / w, v)
-                    if p is not None:
-                        X[r, c], Z[r, c] = p
-            self._lut = (key, X, Z)
+            u = (np.arange(w) + 0.5) / w
+            v = (np.arange(h) + 0.5) / h
+            ang = cam.pitch + np.arctan((v - 0.5) / cam.fy)            # per row: angle below horizontal
+            ok = ang > np.radians(0.3)
+            d = np.where(ok, cam.h / np.tan(np.where(ok, ang, 1.0)), np.nan)
+            depth = np.hypot(d, cam.h) * np.cos(ang - cam.pitch)
+            X = ((u[None, :] - 0.5) / cam.fx) * depth[:, None]
+            Z = np.repeat(d[:, None], w, axis=1)
+            if cam.backward:
+                X, Z = -X, -Z
+            self._lut = (key, X.astype(np.float32), Z.astype(np.float32))
         return self._lut[1], self._lut[2]
+
+    def _horizon_from_lanes(self, ll):
+        """Image row (0-1) of the vanishing point where lane lines converge, or None.
+        Straight segments of lane paint (Hough) leaning left and right are intersected; the median
+        intersection height is the horizon. That gives the camera's true pitch on this road."""
+        h, w = ll.shape
+        segs = cv2.HoughLinesP((ll * 255).astype(np.uint8), 1, np.pi / 90, threshold=12,
+                               minLineLength=max(8, h // 8), maxLineGap=6)
+        if segs is None:
+            return None
+        lines = []
+        for x1, y1, x2, y2 in segs[:, 0]:
+            if y1 == y2:
+                continue
+            slope = (x2 - x1) / (y2 - y1)  # dx per dy
+            if 0.15 < abs(slope) < 4:      # not horizontal (stop lines) nor vertical
+                lines.append((x1, y1, slope, np.hypot(x2 - x1, y2 - y1)))
+        left = [l for l in lines if l[2] < 0]   # x decreases going down: line on the left of the view
+        right = [l for l in lines if l[2] > 0]
+        ys, ws = [], []
+        for a in left:
+            for b in right:
+                # x = xa + sa*(y - ya) = xb + sb*(y - yb)  ->  y
+                y = (b[0] - a[0] + a[2] * a[1] - b[2] * b[1]) / (a[2] - b[2])
+                x = a[0] + a[2] * (y - a[1])
+                if -0.2 * h < y < 0.9 * h and -0.25 * w < x < 1.25 * w:
+                    ys.append(y / h)
+                    ws.append(a[3] * b[3])
+        if len(ys) < 2:
+            return None
+        order = np.argsort(ys)
+        cw = np.cumsum(np.array(ws)[order])
+        return float(np.array(ys)[order][np.searchsorted(cw, cw[-1] / 2)])  # weighted median
+
+    def _auto_pitch(self, ll, t):
+        """Nudge the camera pitch toward what the lane vanishing point says (smoothed, clamped)."""
+        v = self._horizon_from_lanes(ll)
+        if v is None:
+            return
+        target = math.atan((0.5 - v) / self.cam.fy)
+        base = self._pitch0
+        target = min(max(target, base - math.radians(12)), base + math.radians(12))
+        self._pitch_est = target if self._pitch_est is None else 0.85 * self._pitch_est + 0.15 * target
+        self._pitch_n += 1
+        if self._pitch_n >= 3:
+            self.cam.pitch = round(self._pitch_est / math.radians(0.25)) * math.radians(0.25)
 
     # ---- analysis -------------------------------------------------------------------------
     def _analyse(self, img, da, ll, t):
         h, w = da.shape
+        if self.auto_pitch:
+            self._auto_pitch(ll, t)
         X, Z = self._ground_lut(h, w)
         valid = np.isfinite(Z) & (Z >= Z_NEAR) & (Z <= Z_FAR)
-        out = {"ok": True, "model": self.name, "ts": int(t * 1000)}
+        out = {"ok": True, "model": self.name, "ts": int(t * 1000), "pitchDeg": round(math.degrees(self.cam.pitch), 2)}
         out["drivableFraction"] = round(float(da[valid].mean()) if valid.any() else 0.0, 3)
 
         # lane-line points on the road
@@ -188,9 +243,22 @@ class RoadModel:
         if right:
             out["rightBoundary"] = self._boundary_out(right)
         lt, conf, width = self._lane_type(img, left, right, path)
-        out.update(laneType=lt, laneConfidence=round(conf, 2))
+        # vote over the last ~2 s: one frame missing a line shouldn't flip the lane type
+        self._votes.append((t, lt, conf))
+        while self._votes and t - self._votes[0][0] > 2.0:
+            self._votes.popleft()
+        tally = {}
+        for _, k, c in self._votes:
+            tally[k] = tally.get(k, 0.0) + max(c, 0.05)
+        lt = max(tally, key=tally.get)
+        same = [c for _, k, c in self._votes if k == lt]
+        conf = sum(same) / len(self._votes)  # agreement-weighted confidence
+        since = next((tt for tt, k, _ in self._votes if k == lt), t)
+        out.update(laneType=lt, laneConfidence=round(conf, 2), laneStableS=round(t - since, 1))
         if width:
             out["laneWidthM"] = round(width, 2)
+            if width > 4.6:
+                out["multiLane"] = True
             out["offsetM"] = round(-(_x_at(left, 4.0) + _x_at(right, 4.0)) / 2, 2)  # + = right of centre
         return out
 
@@ -198,13 +266,16 @@ class RoadModel:
         """Lane-line candidates as quadratic x(z) fits: [(coeffs, n points)] sorted by x at 4 m."""
         if len(lx) < 25:
             return []
-        near = (lz < 12)
+        # where the lines are, sideways: a histogram over 2-20 m. Dashed lines have gaps, so look
+        # further than the solid-line-friendly near field, and weight far points up (perspective
+        # makes them sparse in the mask)
+        near = (lz >= 2) & (lz < 20)
         if near.sum() < 10:
             return []
-        hist, edges = np.histogram(lx[near], bins=np.arange(-8, 8.01, 0.25))
+        hist, edges = np.histogram(lx[near], bins=np.arange(-8, 8.01, 0.25), weights=0.5 + lz[near] / 10)
         hist = np.convolve(hist, [1, 2, 1], "same")
         peaks = [i for i in range(1, len(hist) - 1)
-                 if hist[i] >= hist[i - 1] and hist[i] > hist[i + 1] and hist[i] >= 6]
+                 if hist[i] >= hist[i - 1] and hist[i] > hist[i + 1] and hist[i] >= 5]
         fits = []
         for i in peaks:
             x0 = (edges[i] + edges[i + 1]) / 2
@@ -216,7 +287,7 @@ class RoadModel:
                 if m.sum() >= 2:
                     xc = float(np.median(lx[m]))
                     pts_x.extend(lx[m]), pts_z.extend(lz[m])
-            if len(pts_x) >= 12 and (max(pts_z) - min(pts_z)) > 3:
+            if len(pts_x) >= 8 and (max(pts_z) - min(pts_z)) > 3:
                 deg = 2 if max(pts_z) - min(pts_z) > 8 else 1
                 c = np.polyfit(pts_z, pts_x, deg)
                 if deg == 1:
@@ -333,6 +404,8 @@ class RoadModel:
             return "bike_lane", 0.65, width  # narrow lane between a line and the curb (right-hand traffic)
         if 0.9 <= width <= 2.4 and lk == "line" and rk == "line":
             return "bike_lane", 0.5, width  # buffered / painted both sides
+        if width > 4.6:
+            return "traffic_lane", 0.3, width  # wider than any lane: a middle line was missed (multi-lane)
         if width >= 2.6:
             return "traffic_lane", 0.6 if lk == rk == "line" else 0.45, width
         return "unknown", 0.2, width

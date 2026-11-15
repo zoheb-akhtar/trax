@@ -113,6 +113,8 @@ The hub's USB-C port only charges: a board plugged in there gets power but no da
 .venv/bin/python velo_brain.py --show --voice     # everything, with the Tesla-style window (P park, R ride)
 .venv/bin/python tests/test_perception_sim.py     # 12 traffic scenarios (clean + noisy) through the real geometry
 .venv/bin/python tests/test_security_rides.py     # park-mode state machine, recordings, ride incidents
+./tools/get_testdata.sh && .venv/bin/python tests/test_real_footage.py   # real street drive: lanes, pitch, no false alarms
+.venv/bin/python tools/eval_road.py testdata/drive.mp4 --zoom --out testdata/vid   # annotated frames of any video
 ./flash_mcu.sh velo_mcu                           # STM32 firmware the brain talks to (ring, IMU, GPS)
 ```
 

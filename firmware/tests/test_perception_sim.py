@@ -100,9 +100,13 @@ results.append(run("parked car, door zone", steps, ego_speed=5.0, expect=["door_
 # 7. oncoming car in our lane
 steps = [[("front", "car", 0.3, 30 - 1.5 * i)] for i in range(14)]
 results.append(run("oncoming car", steps, ego_speed=5.0, expect=["oncoming"]))
-# 8. car turning right across the bike from the left
-steps = [[("front", "car", -4.0 + 0.25 * i, 9.0)] for i in range(14)]
-results.append(run("right hook", steps, expect=["right_hook"]))
+# 8. right hook: riding at 5 m/s, a car ahead-left turns right across the bike's path
+#    (from 3 m left, 10 m ahead, reaching the bike's line in 2 s)
+steps = [[("front", "car", -3.0 + 0.15 * i, 10.0 - 0.5 * i)] for i in range(16)]
+results.append(run("right hook", steps, ego_speed=5.0, expect=["right_hook"]))
+# 8b. a car two lanes over drifting slightly: not a right hook
+steps = [[("front", "car", -6.0 + 0.1 * i, 12.0 - 0.4 * i)] for i in range(16)]
+results.append(run("drifting car two lanes over", steps, ego_speed=4.0, forbid=["right_hook", "collision"]))
 # 9-10. the same close pass and parked car with realistic detector jitter (3 % of box size)
 random.seed(1)
 NOISE[0] = 0.03

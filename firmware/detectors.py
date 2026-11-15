@@ -92,7 +92,7 @@ class _Ultra:
 
 
 class YoloDetector(_Ultra):
-    def __init__(self, path=os.path.join(HERE, "yolo11s.pt"), imgsz=640, half=True):
+    def __init__(self, path=os.path.join(HERE, "yolo11s.pt"), imgsz=640, half=False):  # fp32 is faster on M1 MPS
         super().__init__(path, imgsz, half, COCO_MIN_CONF)
         print(f"[detect] {os.path.basename(path)} on {self.device}, imgsz {imgsz}{', fp16' if self.half else ''}",
               flush=True)
@@ -107,7 +107,7 @@ class WorldDetector(_Ultra):
 
     PATH = os.path.join(HERE, "models", "velo-world.pt")
 
-    def __init__(self, path=PATH, imgsz=640, half=True):
+    def __init__(self, path=PATH, imgsz=640, half=False):
         super().__init__(path, imgsz, half, None)
         self.map = {}
         for i, n in self.names.items():
@@ -124,6 +124,57 @@ class WorldDetector(_Ultra):
             out.append((xyxy[keep] if len(keep) else np.zeros((0, 4)), conf[keep] if len(keep) else np.zeros(0),
                         [labels[i] for i in keep]))
         return out
+
+
+def zoom_window(cam, shape, path_u=0.5, frac=0.5):
+    """The 'narrow camera' crop for the zoom pass: half the frame's width and height, centred on
+    where the path meets the horizon. Far objects there are tiny at full frame; at 2x they're
+    found about twice as often (measured on BDD100K street frames). -> (x0, y0, x1, y1) pixels."""
+    H, W = shape[:2]
+    cw, ch = int(W * frac), int(H * frac)
+    cx = int(min(max(path_u, frac / 2), 1 - frac / 2) * W)
+    hv = min(max(cam.horizon_v, 0.25), 0.75)
+    cy = int((hv + 0.1) * H)  # a little below the horizon: far things stand on the road there
+    x0 = max(0, min(W - cw, cx - cw // 2))
+    y0 = max(0, min(H - ch, cy - ch // 2))
+    return x0, y0, x0 + cw, y0 + ch
+
+
+def merge_zoom(base, zoom, window, shape):
+    """Add zoom-pass detections (in crop coordinates) that the full-frame pass missed."""
+    bx, bc, bn = base
+    zx, zc, zn = zoom
+    H, W = shape[:2]
+    x0, y0, x1, y1 = window
+    sx, sy = (x1 - x0) / W, (y1 - y0) / H
+    bx = np.asarray(bx).reshape(-1, 4)
+    add_x, add_c, add_n = [], [], []
+    for b, c, n in zip(np.asarray(zx).reshape(-1, 4), np.asarray(zc).reshape(-1), zn):
+        # crop edges cut objects in half: only keep boxes well inside the crop
+        if b[0] < 0.01 or b[1] < 0.01 or b[2] > 0.99 or b[3] > 0.99:
+            continue
+        full = np.array([x0 / W + b[0] * sx, y0 / H + b[1] * sy, x0 / W + b[2] * sx, y0 / H + b[3] * sy])
+        if any(_iou(full, o) > 0.4 for o in bx) or any(_iou(full, o) > 0.4 for o in add_x):
+            continue
+        add_x.append(full), add_c.append(c), add_n.append(n)
+    if not add_x:
+        return base
+    return (np.vstack([bx, np.array(add_x)]), np.concatenate([np.asarray(bc).reshape(-1), np.array(add_c)]),
+            list(bn) + add_n)
+
+
+def drop_ego(xyxy, conf, names, ignore_bottom=0.0):
+    """Remove the camera's own vehicle: a car's hood or the bike's front wheel / handlebar shows up
+    as a huge box glued to the bottom edge. ignore_bottom (velo_config.json, per camera) also drops
+    anything that starts below that line."""
+    keep = []
+    for i, b in enumerate(np.asarray(xyxy).reshape(-1, 4)):
+        hood = b[3] > 0.97 and b[1] > 0.6 and (b[2] - b[0]) > 0.45
+        if hood or (ignore_bottom and b[1] > ignore_bottom):
+            continue
+        keep.append(i)
+    xyxy = np.asarray(xyxy).reshape(-1, 4)
+    return xyxy[keep], np.asarray(conf).reshape(-1)[keep], [names[i] for i in keep]
 
 
 def merge(coco, world):

@@ -220,11 +220,12 @@ class Decoder:
 # ---- the brain ------------------------------------------------------------------------
 class Brain:
     def __init__(self, sources, cfg, detector, world=None, use_road=True, mcu=None, voice=False,
-                 world_hz=3.0, security_cam_hz=2.0):
+                 world_hz=3.0, security_cam_hz=2.0, road_size=320, zoom=True):
         self.sources, self.cfg = sources, cfg
         self.detector, self.world = detector, world
         self.faces = D.FaceDetector()
         self.world_hz, self.security_cam_hz = world_hz, security_cam_hz
+        self.zoom, self.zoom_hz = zoom, 3.0
         self.engine = P.Perception(cameras=tuple(sources))
         self.lock = threading.Lock()
         self.mode, self.alarm = "ride", False
@@ -253,7 +254,8 @@ class Brain:
         if use_road and front:
             import road as R
 
-            self.road = R.RoadModel(P.cam_model(front), lambda: self._frame_for_road(front),
+            self.road = R.RoadModel(P.cam_model(front), lambda: self._frame_for_road(front), size=road_size,
+                                    get_motion=
                                     lambda: (mcu.speed_mps() if mcu else None,
                                              mcu.yaw_rate(imu["axis"], imu["sign"]) if mcu else None))
         threading.Thread(target=self._run, daemon=True, name="brain").start()
@@ -328,7 +330,9 @@ class Brain:
             # recompiles for a new batch size / shape combination (that costs seconds)
             results = [self.detector([f])[0] for f in frames]
             t_yolo = time.time() - t0
+            ran_world = False
             if self.world and batch and now - last_world >= 1 / self.world_hz:
+                ran_world = True
                 last_world = now
                 # alternate cameras so each gets YOLO-World at world_hz / n
                 pick = batch[world_turn % len(batch)]
@@ -338,6 +342,19 @@ class Brain:
                 self._world_ms = (time.time() - tw) * 1000
                 i = [b[0] for b in batch].index(pick[0])
                 results[i] = D.merge(results[i], wres)
+            # zoom pass: the front camera's far field at 2x, like Tesla's narrow forward camera
+            # (never in the same cycle as YOLO-World: the extra passes alternate, so the loop stays fast)
+            if self.zoom and not ran_world and now - getattr(self, "_last_zoom", 0) >= 1 / self.zoom_hz:
+                fi = next((i for i, b in enumerate(batch) if P.role(b[0]) == "road_front"), None)
+                if fi is not None:
+                    self._last_zoom = now
+                    img = batch[fi][2]
+                    win = D.zoom_window(P.cam_model(batch[fi][0]), img.shape, self._path_u(batch[fi][0]))
+                    zres = self.detector([img[win[1]:win[3], win[0]:win[2]]])[0]
+                    results[fi] = D.merge_zoom(results[fi], zres, win, img.shape)
+            # drop the camera's own vehicle (bike front wheel / handlebar) and configured dead zones
+            for i, (cam, _, _) in enumerate(batch + sec_batch):
+                results[i] = D.drop_ego(*results[i], self.cfg["cameras"].get(cam, {}).get("ignore_bottom", 0.0))
             t1 = time.time()
             self._yolo_ms = 0.8 * getattr(self, "_yolo_ms", t_yolo * 1000) + 0.2 * t_yolo * 1000
             for (cam, t_recv, img), (xyxy, conf, names) in zip(batch + sec_batch, results):
@@ -365,6 +382,17 @@ class Brain:
                 self._perf(n / (time.time() - t_win), infer_ms, age_ms, len(dets))
                 n, t_win = 0, time.time()
             _ = t_start
+
+    def _path_u(self, cam):
+        """Image column where the predicted path meets the far road (centre of the zoom window)."""
+        st = self.road.state() if self.road else {}
+        path = st.get("egoPath") or []
+        far = [p for p in path if p[1] >= 15]
+        if far:
+            uv = P.cam_model(cam).project(far[-1][0], far[-1][1])
+            if uv:
+                return uv[0]
+        return 0.5
 
     def _security_step(self, seen):
         """Park mode: motion on every camera ~5 Hz, people detection where something moves (and
@@ -881,6 +909,9 @@ def main():
     p.add_argument("--no-road", action="store_true", help="skip YOLOP road / lane understanding")
     p.add_argument("--no-mcu", action="store_true", help="don't talk to the STM32 (ring, IMU, GPS)")
     p.add_argument("--world-hz", type=float, default=3.0)
+    p.add_argument("--road-size", type=int, default=320, choices=(320, 640),
+                   help="YOLOP input size: 640 finds more distant lane lines, ~2.5x the CPU")
+    p.add_argument("--no-zoom", action="store_true", help="skip the centre zoom pass (far objects)")
     p.add_argument("--port", type=int, default=8000)
     p.add_argument("--show", action="store_true", help="open the Tesla-style window")
     p.add_argument("--height", type=int, default=0, help="window tile height (default fits the screen)")
@@ -911,7 +942,7 @@ def main():
     if not a.no_world and os.path.exists(D.WorldDetector.PATH):
         world = D.WorldDetector()
     brain = Brain(sources, cfg, D.YoloDetector(a.model, a.imgsz, a.fp16), world, not a.no_road, mcu, a.voice,
-                  world_hz=a.world_hz)
+                  world_hz=a.world_hz, road_size=a.road_size, zoom=not a.no_zoom)
     if a.mode == "security":
         brain.set_mode("security")
 

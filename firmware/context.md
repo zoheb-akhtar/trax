@@ -221,6 +221,8 @@ MCU -> brain:  I ax ay az gx gy gz (20 Hz) | G fix sats lat lon kmh course hdop 
 | `mac_preview.py` | Simple camera preview with YOLO. |
 | `tests/test_perception_sim.py` | 12 synthetic traffic scenarios through the real geometry, including noisy detector boxes and a lead car's brake lights coming on. **All 12 pass.** |
 | `tests/test_security_rides.py` | Park-mode state machine, pre-roll recordings and ride incidents. **11/11 pass.** |
+| `tests/test_real_footage.py` | **Real street video** (YOLOP's sample expressway drive, fetched by `tools/get_testdata.sh`). Checks: pitch self-calibrates, lane comes out as a 2.8–3.9 m traffic lane, cars are found in every frame, and there are **no false danger alerts**. **5/5 pass.** |
+| `tools/eval_road.py` | Runs the whole pipeline on any images or video and saves annotated frames (road, lanes, path, boxes with distances). Use it on your own ride recordings. |
 
 **Gotcha:** browsers allow about 6 connections per host. Never keep an MJPEG stream open for a camera that isn't live: check `cameraStatus[cam].live`. The brain also closes a stream after 5 s without frames.
 
@@ -291,8 +293,21 @@ Lessons:
   - park view: detected the owner at the bike → "Someone nearby", recording
 - **GPS:** reports a fix with 5 satellites indoors near a window. Readings under 2 km/h count as stopped (GPS jitter).
 
+**Validated on real street footage** (YOLOP / BDD100K samples: day, night, snow, highway, city):
+- YOLOP's drivable area and lane lines are solid in all conditions.
+- Fixes made from what it showed:
+  - **Auto-pitch:** the camera tilt self-calibrates from the lane vanishing point. Without it, a wrong tilt made a 3.4 m car lane read as a 2.1 m "bike lane".
+  - **Lane voting:** the lane type is voted over about 2 s, and the bike-lane alert needs a stable lane.
+  - **Zoom pass:** a 2× centre crop at about 3 Hz, alternating with YOLO-World. It finds about 2× more distant cars.
+  - **Ego filter:** detections of the car's own hood are dropped. For the bike's wheel or handlebar, also see `ignore_bottom` in `velo_config.json`.
+  - **Clipped boxes:** objects cut off by the frame edge are placed by their inner edge.
+  - **Time to contact** from box growth needs a big enough box and a clean trend.
+  - **`oncoming`** needs GPS speed (otherwise slower traffic looks oncoming).
+  - **`right_hook`** needs a predicted path that actually crosses yours.
+- Night-time image brightening was tested and **hurts** YOLO, so it isn't used.
+
 **Not yet verified:**
-- **YOLOP road / lane / bike-lane detection on a real street.** There was no street footage, so record a ride and test with `--front ride.mp4`.
+- **Bike-lane detection on a real bike lane** (the samples are car lanes), and footage from Velo's own bike cameras. Record a ride, then run `tools/eval_road.py ride.mp4 --zoom`.
 - Camera mount calibration (`velo_config.json`).
 - Crash and pothole detection on a real ride.
 - The bike power setup: board as USB host through the hub, on a power bank.

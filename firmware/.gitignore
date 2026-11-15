@@ -12,3 +12,5 @@ hw_diag/out/
 .board
 back.env
 tools/mac_cams
+# real footage for tests: ./tools/get_testdata.sh
+testdata/
