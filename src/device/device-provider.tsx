@@ -33,6 +33,10 @@ type DeviceContextValue = DeviceSnapshot & {
   /** Only available when simulating */
   simulateTamper: (() => void) | null;
   simulateCrash: (() => void) | null;
+  /** Only with a device that has test routes (the laptop test server); false if it has none. */
+  simulateCar: (() => Promise<boolean>) | null;
+  /** Whether the connected device is driven through its test routes rather than built in */
+  testRoutes: boolean;
   chirp(): void;
   /** Says a line through the bike's speaker; false if there is none or it can't be reached. */
   sayOnBike(text: string, urgent: boolean): Promise<boolean>;
@@ -125,8 +129,25 @@ function ConnectedProvider({
     setMode: (mode) => source.setMode(mode),
     silenceAlarm: () => source.silenceAlarm(),
     soundAlarm: () => source.soundAlarm(),
-    simulateTamper: source instanceof MockSource ? () => source.simulateTamper() : null,
-    simulateCrash: source instanceof MockSource ? () => source.simulateCrash() : null,
+    simulateTamper:
+      source instanceof MockSource
+        ? () => source.simulateTamper()
+        : source instanceof HttpSource
+          ? () => {
+              // The test server arms itself when told the bike was moved; a real device ignores it.
+              source.debug('tamper');
+            }
+          : null,
+    simulateCrash:
+      source instanceof MockSource
+        ? () => source.simulateCrash()
+        : source instanceof HttpSource
+          ? () => {
+              source.debug('crash');
+            }
+          : null,
+    simulateCar: source instanceof HttpSource ? () => source.debug('car') : null,
+    testRoutes: source instanceof HttpSource,
     chirp: () => source.chirp(),
     sayOnBike: (text, urgent) => source.say(text, urgent),
     playOnBike: (audio) => source.play(audio),

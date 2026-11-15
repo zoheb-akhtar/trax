@@ -28,7 +28,14 @@ import { Hairline, Spacing, Status, Type } from '@/constants/theme';
 import type { CameraId } from '@/device/types';
 import { pictureUri } from '@/history/files';
 import { useRideHistory } from '@/history/history-provider';
-import { safetyLabel, safetyScore, type Ride, type RideMoment, weekStart } from '@/history/ride-history';
+import {
+  safetyColor,
+  safetyLabel,
+  safetyScore,
+  type Ride,
+  type RideMoment,
+  weekStart,
+} from '@/history/ride-history';
 import { formatDistance, formatSpeed } from '@/nav/geo';
 import { useSecurity } from '@/security/security-provider';
 
@@ -187,7 +194,9 @@ export default function HistoryScreen() {
                       {duration(ride)} · {formatDistance(ride.distance)} ·{' '}
                       {ride.closePasses === 1 ? '1 close pass' : `${ride.closePasses} close passes`}
                       {' · '}
-                      {safetyLabel(safetyScore(ride))}
+                      <Text style={{ color: safetyColor(safetyScore(ride)), fontFamily: Type.semibold }}>
+                        {safetyLabel(safetyScore(ride))}
+                      </Text>
                     </ThemedText>
                   </Card>
                 </Pressable>
@@ -408,7 +417,7 @@ function RideDetail({
         </View>
 
         <View style={styles.scoreRow}>
-          <Text style={styles.score}>{score}</Text>
+          <Text style={[styles.score, { color: safetyColor(score) }]}>{score}</Text>
           <View style={styles.grow}>
             <ThemedText style={styles.scoreLabel}>{safetyLabel(score)} ride</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">

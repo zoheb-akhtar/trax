@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Alert, ScrollView, StyleSheet, Switch, TextInput, View } from 'react-native';
 
+import { checkAgentServer } from '@/agent/client';
 import { testPush, useLaptopPushes } from '@/components/push-watcher';
 import { notifyNow, pushProjectId } from '@/lib/notify';
 import { Screen } from '@/components/screen';
@@ -25,10 +26,19 @@ export default function DeviceScreen() {
     connection,
     simulateTamper,
     simulateCrash,
+    simulateCar,
+    testRoutes,
     hasSpeaker,
   } = useDevice();
   const prefs = useSettings();
   const pushOn = useLaptopPushes();
+  const [checkingAgent, setCheckingAgent] = useState(false);
+  const testAgent = async () => {
+    setCheckingAgent(true);
+    const { title, detail } = await checkAgentServer(prefs.agentUrl, prefs.agentToken);
+    setCheckingAgent(false);
+    Alert.alert(title, detail);
+  };
   const testNotification = async () => {
     if (pushOn) {
       const problem = await testPush(prefs.agentUrl, prefs.agentToken);
@@ -128,17 +138,23 @@ export default function DeviceScreen() {
           <TextInput
             value={prefs.agentToken}
             onChangeText={(agentToken) => prefs.update({ agentToken })}
-            placeholder="Server token (optional)"
+            placeholder="Server password, e.g. velo-1234"
             placeholderTextColor={theme.textSecondary}
             autoCapitalize="none"
             autoCorrect={false}
-            secureTextEntry
+            spellCheck={false}
             style={[styles.input, { color: theme.text }]}
           />
           <ThemedText type="small" themeColor="textSecondary">
-            The agent runs through a small server on your laptop (device/agent_proxy.py). The AI
-            key stays there, never in this app.
+            The agent runs through a small server on your laptop (device/agent_proxy.py), which
+            prints its password when it starts. The AI key stays there, never in this app.
           </ThemedText>
+          <Button
+            title={checkingAgent ? 'Checking…' : 'Test agent server'}
+            variant="secondary"
+            disabled={checkingAgent}
+            onPress={testAgent}
+          />
         </Card>
 
         <Card>
@@ -221,13 +237,26 @@ export default function DeviceScreen() {
           <Card>
             <ThemedText type="label">Demo</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
-              Arms the simulated Velo and pretends someone moved the bike.
+              {testRoutes
+                ? 'For the test server on the laptop. A real Velo ignores these: move the bike instead.'
+                : 'Arms the simulated Velo and pretends someone moved the bike.'}
             </ThemedText>
             <Button
               title="Simulate bike being moved"
               variant="secondary"
               onPress={simulateTamper}
             />
+            {simulateCar && (
+              <Button
+                title="Simulate a car close behind"
+                variant="secondary"
+                onPress={async () => {
+                  if (!(await simulateCar())) {
+                    Alert.alert('Not available', 'This Velo has no test routes. Only the laptop test server does.');
+                  }
+                }}
+              />
+            )}
             {simulateCrash && (
               <Button title="Simulate a crash" variant="secondary" onPress={simulateCrash} />
             )}

@@ -29,10 +29,44 @@ export function setBikeSpeaker(speaker: BikeSpeaker | null) {
   bike = speaker;
 }
 
+/**
+ * The voice Velo speaks with: Zoe (Premium) if the phone has it, else the best English voice
+ * installed. iOS only hands out its better voices to apps that ask for them by name.
+ * To install Zoe: Settings > Accessibility > Spoken Content > Voices > English > Zoe (Premium).
+ */
+const PREFERRED_VOICE = 'Zoe';
+let voiceId: string | undefined;
+
+/** Picks the voice once at start-up. Speech works before this finishes, in the default voice. */
+export async function chooseVoice() {
+  try {
+    const voices = (await Speech.getAvailableVoicesAsync()).filter((v) =>
+      v.language.toLowerCase().startsWith('en'),
+    );
+    const rank = (id: string) => (/premium/i.test(id) ? 2 : /enhanced/i.test(id) ? 1 : 0);
+    const best = [...voices].sort((a, b) => {
+      const byQuality = rank(b.identifier) - rank(a.identifier);
+      if (byQuality !== 0) return byQuality;
+      const preferred = Number(b.name === PREFERRED_VOICE) - Number(a.name === PREFERRED_VOICE);
+      if (preferred !== 0) return preferred;
+      return Number(b.language === 'en-US') - Number(a.language === 'en-US');
+    })[0];
+    // Zoe at the best quality installed beats another voice at the same quality.
+    const zoe = voices
+      .filter((v) => v.name === PREFERRED_VOICE)
+      .sort((a, b) => rank(b.identifier) - rank(a.identifier))[0];
+    const pick = zoe && best && rank(zoe.identifier) >= rank(best.identifier) ? zoe : best;
+    voiceId = pick?.identifier;
+    return pick ? `${pick.name}${rank(pick.identifier) === 2 ? ' (Premium)' : rank(pick.identifier) === 1 ? ' (Enhanced)' : ''}` : null;
+  } catch {
+    return null;
+  }
+}
+
 function phoneSpeak(text: string, interrupt: boolean) {
   try {
     if (interrupt) Speech.stop().catch(() => {});
-    Speech.speak(text, { rate: 1.02, pitch: 1 });
+    Speech.speak(text, { rate: 1.0, pitch: 1, voice: voiceId });
     return true;
   } catch {
     // Speech is a nice-to-have; never let it break the ride screen.

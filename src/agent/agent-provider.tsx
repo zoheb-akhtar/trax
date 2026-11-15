@@ -297,6 +297,10 @@ export function AgentProvider({ children }: { children: ReactNode }) {
       const message = 'Velo needs microphone access. Turn it on in Settings.';
       add('problem', message);
       say(message, true);
+    } else if (outcome.reason === 'password') {
+      const message = 'The agent server needs its password. Enter it under AI agent in the Device tab.';
+      add('problem', message);
+      say(message, true);
     } else if (outcome.reason === 'unavailable') {
       setChoosing(true);
     } else if (outcome.reason === 'failed') {

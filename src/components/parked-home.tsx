@@ -16,7 +16,13 @@ import { Hairline, Spacing, Status, Type } from '@/constants/theme';
 import { useDevice } from '@/device/device-provider';
 import type { CameraId, Connection } from '@/device/types';
 import { useRideHistory } from '@/history/history-provider';
-import { safetyLabel, safetyScore, weekStart, combinedSafetyScore } from '@/history/ride-history';
+import {
+  combinedSafetyScore,
+  safetyColor,
+  safetyLabel,
+  safetyScore,
+  weekStart,
+} from '@/history/ride-history';
 import { formatDistance, formatDuration } from '@/nav/geo';
 import { useNav } from '@/nav/nav-provider';
 import { useRideUi } from '@/ride-ui/ride-ui-provider';
@@ -121,15 +127,15 @@ export function ParkedHome({ onPlan }: { onPlan(): void }) {
   };
 
   return (
-    <View style={[styles.screen, { paddingTop: insets.top + Spacing.two }]}>
+    // Room at the top for the mic button, which sits over this screen.
+    <View style={[styles.screen, { paddingTop: insets.top + 64 }]}>
+      {/* The name, level with the mic button at the top right. */}
+      <View style={[styles.brandRow, { top: insets.top + Spacing.two }]} pointerEvents="none">
+        <Text style={styles.brand} accessibilityRole="header">
+          Velo
+        </Text>
+      </View>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        <View style={styles.heading}>
-          <ThemedText type="label" numberOfLines={1}>
-            {parked?.place ? `Parked · ${parked.place}` : 'Parked'}
-          </ThemedText>
-          <Text style={styles.title}>Armed</Text>
-        </View>
-
         {main ? (
           <View style={styles.hero}>
             <Image
@@ -191,6 +197,18 @@ export function ParkedHome({ onPlan }: { onPlan(): void }) {
           </View>
         )}
 
+        <View style={styles.parkedRow}>
+          <SymbolView
+            name={{ ios: 'mappin.circle.fill', android: 'location_on', web: 'location_on' }}
+            size={16}
+            tintColor="#6B7076"
+          />
+          <Text style={styles.parkedText} numberOfLines={1}>
+            {parked?.place ? `Parked at ${parked.place}` : 'Parked'}
+            {since ? ` · since ${since}` : ''}
+          </Text>
+        </View>
+
         <View style={styles.tiles}>
           <LinearGradient colors={batteryColors} style={styles.tile}>
             <Text style={styles.tileLabel}>BATTERY</Text>
@@ -238,12 +256,14 @@ export function ParkedHome({ onPlan }: { onPlan(): void }) {
             <Figure value={String(weekPasses)} label="Close passes" />
             <Figure
               value={score == null ? '–' : `${score}/100`}
+              color={score == null ? undefined : safetyColor(score)}
               label={score == null ? 'Safety score' : `Safety score · ${safetyLabel(score)}`}
             />
           </View>
           <Text style={styles.explain}>
-            Safety score: 100 means no vehicle passed close. It drops the more close passes you get
-            per kilometre{weekRate == null ? '' : ` (${weekRate} per km this week)`}.
+            Safety score: 100 means no vehicle passed close. It drops as close passes get more
+            frequent; one on a normal ride still scores in the 90s
+            {weekRate == null ? '' : ` (${weekRate} per km this week)`}.
           </Text>
         </View>
 
@@ -275,7 +295,11 @@ export function ParkedHome({ onPlan }: { onPlan(): void }) {
                   label="Time"
                 />
                 <Figure value={String(lastRide.closePasses)} label="Close passes" />
-                <Figure value={`${safetyScore(lastRide)}/100`} label="Safety score" />
+                <Figure
+                  value={`${safetyScore(lastRide)}/100`}
+                  label="Safety score"
+                  color={safetyColor(safetyScore(lastRide))}
+                />
               </View>
             </>
           ) : (
@@ -371,10 +395,10 @@ export function ParkedHome({ onPlan }: { onPlan(): void }) {
   );
 }
 
-function Figure({ value, label }: { value: string; label: string }) {
+function Figure({ value, label, color }: { value: string; label: string; color?: string }) {
   return (
     <View style={styles.figure}>
-      <Text style={styles.figureValue} numberOfLines={1} adjustsFontSizeToFit>
+      <Text style={[styles.figureValue, color ? { color } : null]} numberOfLines={1} adjustsFontSizeToFit>
         {value}
       </Text>
       <Text style={styles.figureLabel} numberOfLines={1}>
@@ -387,7 +411,16 @@ function Figure({ value, label }: { value: string; label: string }) {
 const styles = StyleSheet.create({
   screen: { flex: 1 },
   scroll: { paddingHorizontal: Spacing.three, gap: Spacing.three, paddingBottom: Spacing.four },
-  heading: { alignItems: 'center', gap: 2 },
+  brandRow: { position: 'absolute', left: Spacing.three, height: 52, justifyContent: 'center' },
+  brand: { color: '#111111', fontFamily: Type.bold, fontSize: 30, letterSpacing: -0.8 },
+  parkedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    marginTop: -Spacing.one,
+  },
+  parkedText: { flexShrink: 1, color: '#4A4E55', fontFamily: Type.medium, fontSize: 15 },
   title: {
     color: '#111111',
     fontFamily: Type.regular,

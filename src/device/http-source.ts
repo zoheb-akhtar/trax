@@ -86,6 +86,19 @@ export class HttpSource extends SnapshotStore implements DeviceSource {
     this.post('/chirp', {});
   }
 
+  /**
+   * Asks the device to pretend something happened, through the test server's /debug routes.
+   * A real device has no such routes, so this resolves false there.
+   */
+  async debug(what: 'tamper' | 'crash' | 'car') {
+    try {
+      await this.request(`/debug/${what}`, { method: 'POST' });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async say(text: string, urgent: boolean) {
     if (!this.snapshot.state.speaker || this.snapshot.connection !== 'connected') return false;
     try {

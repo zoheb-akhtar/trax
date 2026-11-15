@@ -294,9 +294,22 @@ export class RideHistory {
 }
 
 /** How calm a ride was, 0-100, from close passes per kilometre. */
+/**
+ * How calm a ride was, 0-100. 100 is no close passes.
+ *
+ * Close passes are counted per kilometre, with a few kilometres of calm riding assumed on top,
+ * so one pass on a short ride doesn't sink the score: one close pass on a normal ride still
+ * scores in the 90s. The score then falls off smoothly as passes become frequent.
+ *   1 pass in 2 km: 95.   3 in 4 km: 90.   10 in 5 km: 73.   30 in 4 km: about 35.
+ */
+const SCORE_PRIOR_KM = 3;
+const SCORE_FALLOFF = 0.26;
+const SCORE_FLOOR = 20;
+
 export function safetyScore(ride: Pick<Ride, 'distance' | 'closePasses'>) {
-  const km = Math.max(ride.distance / 1000, 0.3);
-  return Math.round(Math.min(Math.max(100 - (ride.closePasses / km) * 14, 15), 100));
+  if (ride.closePasses <= 0) return 100;
+  const perKm = ride.closePasses / (ride.distance / 1000 + SCORE_PRIOR_KM);
+  return Math.max(Math.round(100 * Math.exp(-SCORE_FALLOFF * perKm)), SCORE_FLOOR);
 }
 
 /**
@@ -316,6 +329,14 @@ export function combinedSafetyScore(rides: Ride[]) {
     distance: rides.reduce((sum, ride) => sum + ride.distance, 0),
     closePasses: rides.reduce((sum, ride) => sum + ride.closePasses, 0),
   });
+}
+
+/** The colour that goes with a safety score's rating: green calm, blue steady, orange busy, red tense. */
+export function safetyColor(score: number) {
+  if (score >= 85) return '#16A34A';
+  if (score >= 65) return '#2563EB';
+  if (score >= 45) return '#D97706';
+  return '#DC2626';
 }
 
 export function safetyLabel(score: number) {

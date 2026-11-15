@@ -152,7 +152,12 @@ export function explainError(error: unknown) {
     return "I can't reach the Velo agent server. Check its address in the Device tab.";
   }
   if (error instanceof Anthropic.AuthenticationError) {
-    return 'The agent server rejected the request. Check the proxy token, or the API key on the server.';
+    // The agent server's own refusal (wrong password) looks different from the AI service
+    // refusing the server's API key.
+    const body = (error as { error?: { error?: { type?: string } } }).error;
+    return body?.error?.type === 'proxy_error'
+      ? 'Wrong agent server password. Enter it under AI agent in the Device tab.'
+      : 'The API key on the agent server was rejected. Check ANTHROPIC_API_KEY on the laptop.';
   }
   if (error instanceof Anthropic.RateLimitError) return "I'm being rate limited. Try again in a moment.";
   if (error instanceof Anthropic.APIError) {

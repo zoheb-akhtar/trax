@@ -1,7 +1,7 @@
 import { fetch } from 'expo/fetch';
 import { useEffect, useState, useSyncExternalStore } from 'react';
 
-import { proxyUrl } from '@/agent/client';
+import { cleanToken, proxyUrl } from '@/agent/client';
 import { useDevice } from '@/device/device-provider';
 import { normalizeHost } from '@/device/http-source';
 import { pushToken } from '@/lib/notify';
@@ -67,7 +67,7 @@ export function PushWatcher() {
           method: 'POST',
           headers: {
             'content-type': 'application/json',
-            'x-api-key': agentToken.trim() || 'velo-proxy',
+            'x-api-key': cleanToken(agentToken) || 'velo-proxy',
           },
           body: JSON.stringify({ pushToken: token, device }),
         });
@@ -92,7 +92,7 @@ export async function testPush(agentUrl: string, agentToken: string) {
   try {
     const response = await fetch(`${proxyUrl(agentUrl)}/v1/watch`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-api-key': agentToken.trim() || 'velo-proxy' },
+      headers: { 'content-type': 'application/json', 'x-api-key': cleanToken(agentToken) || 'velo-proxy' },
       body: JSON.stringify({ test: true }),
     });
     const detail = await response.json().catch(() => null);

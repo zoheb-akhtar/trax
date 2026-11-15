@@ -248,6 +248,10 @@ class Handler(BaseHTTPRequestHandler):
         if self.client_address[0] in LOCAL_ADDRESSES:
             return True
         sent = self.headers.get("x-api-key", "")
+        if not sent:
+            # The Anthropic SDK may send the key as a bearer token instead.
+            bearer = self.headers.get("authorization", "")
+            sent = bearer[7:].strip() if bearer.lower().startswith("bearer ") else ""
         try:
             return hmac.compare_digest(sent.encode(), TOKEN.encode())
         except Exception:

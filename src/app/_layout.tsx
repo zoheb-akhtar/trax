@@ -27,7 +27,7 @@ import { RideUiProvider } from '@/ride-ui/ride-ui-provider';
 import { SecurityProvider } from '@/security/security-provider';
 import { PushWatcher } from '@/components/push-watcher';
 import { setUpNotifications } from '@/lib/notify';
-import { setUpAudio } from '@/lib/voice';
+import { chooseVoice, setUpAudio } from '@/lib/voice';
 import { SettingsProvider } from '@/settings/settings-provider';
 
 // Hold the splash screen until the typeface has loaded, so text never flashes in a fallback font.
@@ -49,6 +49,7 @@ export default function RootLayout() {
   // Speech must play with the silent switch on, and duck music rather than stop it.
   useEffect(() => {
     setUpAudio();
+    chooseVoice();
     setUpNotifications();
   }, []);
 

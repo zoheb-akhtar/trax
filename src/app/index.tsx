@@ -9,6 +9,7 @@ import Animated, { FadeIn, FadeInDown, FadeOut, FadeOutDown } from 'react-native
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AgentButton } from '@/components/agent-button';
+import { DemoDirector } from '@/components/demo-director';
 import { CameraFeed } from '@/components/camera-feed';
 import { CameraSwitch } from '@/components/camera-switch';
 import { Chip } from '@/components/chip';
@@ -333,6 +334,9 @@ export default function RideScreen() {
         </View>
       )}
 
+      <View style={[styles.demo, { top: insets.top + Spacing.two }]} pointerEvents="box-none">
+        <DemoDirector riding={riding} />
+      </View>
       <View style={[styles.agent, { top: insets.top + Spacing.two }]} pointerEvents="box-none">
         <AgentButton />
       </View>
@@ -365,6 +369,7 @@ export default function RideScreen() {
 
 const styles = StyleSheet.create({
   agent: { position: 'absolute', right: Spacing.three },
+  demo: { position: 'absolute', left: 0, right: 0 },
   screen: { flex: 1, backgroundColor: '#F2F1ED' },
   stage: { flex: 1 },
   top: { position: 'absolute', left: 0, right: 0, alignItems: 'center' },

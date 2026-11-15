@@ -9,7 +9,7 @@ import { File } from 'expo-file-system';
 import { fetch } from 'expo/fetch';
 import { useEffect, useRef, type RefObject } from 'react';
 
-import { proxyUrl } from './client';
+import { cleanToken, proxyUrl } from './client';
 
 export type HeardResult =
   | { ok: true; text: string }
@@ -17,7 +17,7 @@ export type HeardResult =
    * denied: no microphone permission. nothing: no words were heard. cancelled: the owner
    * stopped it. unavailable: the proxy can't turn speech into text (not set up, or unreachable).
    */
-  | { ok: false; reason: 'denied' | 'nothing' | 'cancelled' | 'unavailable' | 'failed' };
+  | { ok: false; reason: 'denied' | 'nothing' | 'cancelled' | 'unavailable' | 'password' | 'failed' };
 
 /**
  * Whether the proxy can turn speech into text right now. Asked on every tap (it is a quick
@@ -116,7 +116,7 @@ export function VoiceRecorder({ address, token, controlRef, onStopped, onDone }:
       onStopped();
       const response = await fetch(`${proxyUrl(address)}/v1/transcribe`, {
         method: 'POST',
-        headers: { 'content-type': 'audio/m4a', 'x-api-key': token.trim() || 'velo-proxy' },
+        headers: { 'content-type': 'audio/m4a', 'x-api-key': cleanToken(token) || 'velo-proxy' },
         body: await new File(uri).bytes(),
         signal: abort.signal,
       });
@@ -124,6 +124,8 @@ export function VoiceRecorder({ address, token, controlRef, onStopped, onDone }:
       if (response.status === 404 || response.status === 501 || response.status === 503) {
         return onDone({ ok: false, reason: 'unavailable' });
       }
+      // From a phone, the agent server wants its password (the simulator on the same Mac doesn't).
+      if (response.status === 401) return onDone({ ok: false, reason: 'password' });
       if (!response.ok) return onDone({ ok: false, reason: 'failed' });
       const text = String((await response.json()).text ?? '').trim();
       onDone(text ? { ok: true, text } : { ok: false, reason: 'nothing' });
