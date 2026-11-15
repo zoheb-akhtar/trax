@@ -2,6 +2,8 @@ import { SnapshotStore } from './source-base';
 import {
   EMPTY_STATE,
   type CameraId,
+  type CameraView,
+  type DeviceAlert,
   type DeviceMode,
   type DeviceSource,
   type DeviceState,
@@ -37,18 +39,31 @@ export class HttpSource extends SnapshotStore implements DeviceSource {
   private timer: ReturnType<typeof setTimeout> | null = null;
   private failures = 0;
   private pending: { mode?: DeviceMode; alarm?: boolean; until: number } = { until: 0 };
+  /** The device's physical cameras, if it lists them (the perception brain: front, rear, seat) */
+  private sources: string[] = [];
 
   constructor(host: string) {
     super({ connection: host.trim() ? 'connecting' : 'offline', state: EMPTY_STATE });
     this.base = normalizeHost(host);
   }
 
-  streamUrlFor(camera: CameraId) {
-    return this.base ? `${this.base}/stream?camera=${camera}` : null;
+  streamUrlFor(camera: CameraView) {
+    return this.base ? `${this.base}/stream?camera=${this.physical(camera)}` : null;
   }
 
-  snapshotUrlFor(camera: CameraId) {
-    return this.base ? `${this.base}/snapshot?camera=${camera}` : null;
+  snapshotUrlFor(camera: CameraView) {
+    return this.base ? `${this.base}/snapshot?camera=${this.physical(camera)}` : null;
+  }
+
+  /**
+   * Which physical camera to show. On the perception rig both Pi cameras face forward ("front"
+   * for the road, "rear" for security), and the only camera looking backwards is the "seat"
+   * webcam. So the app's rear view is the seat webcam, and its security view is the second Pi.
+   */
+  private physical(camera: CameraView) {
+    if (camera === 'security') return 'rear';
+    if (camera === 'rear' && this.sources.includes('seat')) return 'seat';
+    return camera;
   }
 
   start() {
@@ -152,7 +167,9 @@ export class HttpSource extends SnapshotStore implements DeviceSource {
   private async poll() {
     try {
       const res = await this.request('/state');
-      let state = parseState(await res.json());
+      const json = await res.json();
+      this.sources = Array.isArray(json?.sources) ? json.sources.map(String) : [];
+      let state = parseState(json);
       if (Date.now() < this.pending.until) {
         state = {
           ...state,
@@ -209,8 +226,49 @@ function eventId(e: any, index: number) {
   return `event-${index}`;
 }
 
+/** Labels some detectors report that are scenery, not traffic. */
+const NOT_TRAFFIC = new Set(['traffic light', 'stop sign', 'sign', 'traffic sign']);
+
+/**
+ * The device's own estimate of where a detection is, if it sends one. The perception brain
+ * reports [x, z] with z ahead; the app's 3D view has z behind, so it is flipped here.
+ */
+function worldPosition(d: any) {
+  const p = d?.position;
+  if (!Array.isArray(p) || typeof p[0] !== 'number' || typeof p[1] !== 'number') return undefined;
+  const x = p[0];
+  const z = -p[1];
+  const distance = typeof d.distanceM === 'number' ? d.distanceM : Math.hypot(x, z);
+  return { x, z, distance };
+}
+
+/** The perception rig names its cameras front, rear (the second Pi, for security) and seat. */
+function viewOf(source: unknown): CameraView | undefined {
+  if (source === 'front') return 'front';
+  if (source === 'rear') return 'security';
+  if (source === 'seat') return 'rear';
+  return undefined;
+}
+
+const LEVELS = new Set(['danger', 'caution', 'info']);
+const SIDES = new Set(['ahead', 'behind', 'left', 'right']);
+
+function parseAlerts(json: any): DeviceAlert[] | null {
+  if (!Array.isArray(json?.alerts)) return null;
+  return json.alerts
+    .filter((a: any) => typeof a?.kind === 'string' && LEVELS.has(a?.level))
+    .map((a: any, i: number) => ({
+      id: a.id != null ? String(a.id) : `${a.kind}-${i}`,
+      kind: a.kind,
+      level: a.level,
+      text: typeof a.text === 'string' ? a.text : a.kind.replace(/_/g, ' '),
+      side: SIDES.has(a.side) ? a.side : null,
+      trackId: typeof a.trackId === 'number' ? a.trackId : null,
+    }));
+}
+
 /** Tolerate missing fields so a half-finished device server still works. */
-function parseState(json: any): DeviceState {
+export function parseState(json: any): DeviceState {
   const cameras: CameraId[] = json?.cameras?.includes?.('rear')
     ? json.cameras.includes('front')
       ? ['front', 'rear']
@@ -233,6 +291,8 @@ function parseState(json: any): DeviceState {
       ? json.detections
           .filter((d: any) => Array.isArray(d?.box) && d.box.length === 4)
           .filter((d: any) => typeof d.confidence !== 'number' || d.confidence >= MIN_CONFIDENCE)
+          // Signs and traffic lights have no place in the 3D view of the traffic.
+          .filter((d: any) => d.group !== 'sign' && !NOT_TRAFFIC.has(String(d.label).toLowerCase()))
           .map((d: any, i: number) => {
             const label = String(d.label ?? 'object').toLowerCase();
             return {
@@ -241,6 +301,8 @@ function parseState(json: any): DeviceState {
               confidence: typeof d.confidence === 'number' ? d.confidence : 1,
               box: d.box.map(Number) as [number, number, number, number],
               camera: d.camera === 'rear' || d.camera === 'front' ? d.camera : defaultCamera,
+              world: worldPosition(d),
+              view: viewOf(d.source),
             };
           })
       : [],
@@ -254,6 +316,11 @@ function parseState(json: any): DeviceState {
             ts: typeof e?.ts === 'number' ? e.ts : Date.now(),
           }))
       : [],
+    alerts: parseAlerts(json),
+    views:
+      Array.isArray(json?.sources) && json.sources.includes('seat') && json.sources.includes('rear')
+        ? ['front', 'security', 'rear']
+        : undefined,
     bumps: Array.isArray(json?.events)
       ? json.events
           .filter((e: any) => e?.kind === 'pothole' && typeof e?.severity === 'number')

@@ -2,19 +2,19 @@
 // see as an input; memoizing here would leave old units on screen after a change.
 'use no memo';
 
-import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { SymbolView, type SymbolViewProps } from 'expo-symbols';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { entryLabel } from '@/components/security-entries';
+import { MjpegView } from '@/components/mjpeg-view';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { Hairline, Spacing, Status, Type } from '@/constants/theme';
 import { useDevice } from '@/device/device-provider';
-import type { CameraId, Connection } from '@/device/types';
+import type { CameraView, Connection } from '@/device/types';
 import { useRideHistory } from '@/history/history-provider';
 import {
   combinedSafetyScore,
@@ -36,7 +36,11 @@ const LINK: Record<Connection, { label: string; color: string }> = {
   offline: { label: 'Out of range', color: Status.danger },
 };
 
-const CAMERA_LABEL: Record<CameraId, string> = { front: 'Front', rear: 'Rear' };
+const CAMERA_LABEL: Record<CameraView, string> = {
+  front: 'Front',
+  security: 'Security',
+  rear: 'Rear',
+};
 
 const ACTIVITY: Record<SecurityKind, { color: string; icon: SymbolViewProps['name'] }> = {
   armed: { color: '#0E9F6E', icon: { ios: 'lock.fill', android: 'lock', web: 'lock' } },
@@ -61,8 +65,6 @@ const ACTIVITY: Record<SecurityKind, { color: string; icon: SymbolViewProps['nam
     icon: { ios: 'figure.fall', android: 'personal_injury', web: 'personal_injury' },
   },
 };
-/** The camera previews are stills, refreshed this often. */
-const PREVIEW_EVERY_MS = 4000;
 const DAY_MS = 86400000;
 
 /**
@@ -70,7 +72,7 @@ const DAY_MS = 86400000;
  */
 export function ParkedHome({ onPlan }: { onPlan(): void }) {
   const insets = useSafeAreaInsets();
-  const { state, connection, setMode, snapshotUrlFor } = useDevice();
+  const { state, connection, setMode, streamUrlFor, views } = useDevice();
   const { parked, entries } = useSecurity();
   const { rides } = useRideHistory();
   const trip = useNav();
@@ -102,17 +104,13 @@ export function ParkedHome({ onPlan }: { onPlan(): void }) {
   const batteryColors: [string, string] =
     (state.battery ?? 100) < 20 ? ['#FBE4DC', '#FBE4DC'] : ['#E2F3E9', '#E2F3E9'];
 
-  // Camera previews: a fresh still every few seconds while this screen is up.
-  const [tick, setTick] = useState(0);
-  useEffect(() => {
-    const timer = setInterval(() => setTick((t) => t + 1), PREVIEW_EVERY_MS);
-    return () => clearInterval(timer);
-  }, []);
-  const previews = state.cameras
-    .map((camera) => ({ camera, url: connection === 'connected' ? snapshotUrlFor(camera) : null }))
+  // Live video from whichever camera is picked.
+  const previews = views
+    .map((camera) => ({ camera, url: connection === 'connected' ? streamUrlFor(camera) : null }))
     .filter((p) => p.url !== null);
   // The big picture at the top: the rear camera unless the other one is picked.
-  const [chosen, setCamera] = useState<CameraId>('rear');
+  const [picked, setCamera] = useState<CameraView | null>(null);
+  const chosen = picked ?? (views.includes('security') ? 'security' : 'rear');
   // A camera asked for through the AI agent ("show the front camera") wins while it lasts.
   const { pinnedCamera, pinCamera } = useRideUi();
   const camera = pinnedCamera ?? chosen;
@@ -138,14 +136,7 @@ export function ParkedHome({ onPlan }: { onPlan(): void }) {
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
         {main ? (
           <View style={styles.hero}>
-            <Image
-              source={{ uri: `${main.url}&t=${tick}` }}
-              // A new picture every few seconds: keeping each one would fill the phone.
-              cachePolicy="none"
-              style={StyleSheet.absoluteFill}
-              contentFit="cover"
-              transition={300}
-            />
+            {main.url && <MjpegView key={main.url} uri={main.url} />}
             <View style={styles.heroTop}>
               <View style={styles.previewTag}>
                 <View style={styles.liveDot} />

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 
 import { isCloseVehicle, isNearCyclist, toWorld } from './geometry';
-import type { CameraId, Detection } from './types';
+import type { CameraId, CameraView, Detection } from './types';
 
 import { useRideUi } from '@/ride-ui/ride-ui-provider';
 
@@ -27,8 +27,8 @@ export function cameraToWatch(detections: Detection[]): CameraId | null {
  * Picks which camera picture to show without the rider touching the phone.
  * `pin` overrides the choice for a while (for when stopped, or for a demo).
  */
-export function useAutoCamera(cameras: CameraId[], detections: Detection[]) {
-  const [shown, setShown] = useState<CameraId>(DEFAULT_CAMERA);
+export function useAutoCamera(cameras: CameraView[], detections: Detection[]) {
+  const [shown, setShown] = useState<CameraView>(DEFAULT_CAMERA);
   // The pinned camera lives above the screen so the AI agent can set it too.
   const { pinnedCamera: pinned, pinCamera } = useRideUi();
   const lastSwitch = useRef(0);

@@ -1,4 +1,9 @@
-"""Link to the STM32 running velo_mcu.ino, over the UNO Q's USB serial port.
+"""Link to the STM32 running velo_mcu.ino, over the UNO Q's USB serial port, or over Wi-Fi.
+
+With the USB cable in, it uses /dev/cu.usbmodem*. Without it (the board on its own charger, on
+the same Wi-Fi), it connects to the board's sensor port instead: VELO_HOST (default
+uno-q.local), port VELO_MCU_PORT (default 5010). The board serves that port with
+board/velo-mcu.service (see board/README_MCU_WIFI.md).
 
     mcu = Mcu(on_event=print)       # finds /dev/cu.usbmodem*, reconnects by itself
     mcu.mode("park")                # MODE off|drive|park
@@ -13,10 +18,15 @@ from __future__ import annotations
 
 import glob
 import os
+import socket
 import subprocess
 import termios
 import threading
 import time
+
+
+WIFI_HOST = os.environ.get("VELO_HOST", "uno-q.local")
+WIFI_PORT = int(os.environ.get("VELO_MCU_PORT", "5010"))
 
 
 class Mcu:
@@ -24,6 +34,7 @@ class Mcu:
         self.on_event = on_event or (lambda kind, value: None)
         self.port = port
         self.fd = None
+        self.over_wifi = False  # True when the link is the board's sensor port, not USB
         self.imu = None   # {"ax","ay","az","gx","gy","gz","t"}
         self.gps = None   # {"fix","sats","lat","lon","kmh","course","hdop","t"}
         self.hb = None    # {"mode","ring","imu","gps","up","t"}
@@ -86,6 +97,7 @@ class Mcu:
 
     # ---- reader ---------------------------------------------------------------------------
     def _open(self):
+        self.over_wifi = False
         ports = [self.port] if self.port else sorted(glob.glob("/dev/cu.usbmodem*"))
         for p in ports:
             try:
@@ -95,7 +107,15 @@ class Mcu:
                 return fd
             except OSError:
                 continue
-        return None
+        # No USB cable: try the board's sensor port over Wi-Fi.
+        try:
+            sock = socket.create_connection((WIFI_HOST, WIFI_PORT), timeout=3)
+            sock.settimeout(None)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+            self.over_wifi = True
+            return sock.detach()  # a plain file descriptor: os.read / os.write work on it
+        except OSError:
+            return None
 
     def _run(self):
         while True:
@@ -110,6 +130,8 @@ class Mcu:
                 while True:
                     chunk = os.read(self.fd, 4096)
                     if not chunk:
+                        if self.over_wifi:
+                            break  # the board closed the connection: reconnect
                         time.sleep(0.01)
                         continue
                     buf += chunk

@@ -9,6 +9,12 @@ export type DeviceMode = 'ride' | 'security';
 
 export type CameraId = 'front' | 'rear';
 
+/**
+ * A picture the app can show. Most devices have just front and rear. The perception rig has a
+ * third: a second front camera used for security ("security"), with the webcam as "rear".
+ */
+export type CameraView = CameraId | 'security';
+
 export type Detection = {
   id: number;
   /** e.g. "car", "person", "bicycle" */
@@ -19,6 +25,27 @@ export type Detection = {
   box: [number, number, number, number];
   /** Which camera saw it. Defaults to the front camera. */
   camera?: CameraId;
+  /** Which picture it was seen in, when the device has more than one camera per side */
+  view?: CameraView;
+  /**
+   * Where it is, in metres, when the device works this out itself (the perception brain does,
+   * from each camera's mounting). x is to the right, z is behind (negative = ahead), as in the
+   * app's 3D view. Without it, the app estimates the position from the box.
+   */
+  world?: { x: number; z: number; distance: number };
+};
+
+/** A warning the device worked out itself, e.g. a car about to pass too close. */
+export type DeviceAlert = {
+  id: string;
+  /** e.g. close_pass, collision, rear_collision, right_hook, vehicle_behind, crossing */
+  kind: string;
+  level: 'danger' | 'caution' | 'info';
+  /** Ready to show or say, e.g. "Car passing close on your left" */
+  text: string;
+  side: 'ahead' | 'behind' | 'left' | 'right' | null;
+  /** The detection it is about, if any */
+  trackId: number | null;
 };
 
 export type SecurityEvent = {
@@ -53,11 +80,18 @@ export type DeviceState = {
   speaker: boolean;
   /** Cameras fitted to the device */
   cameras: CameraId[];
+  /** Pictures to choose from on screen, when they differ from `cameras` (the perception rig) */
+  views?: CameraView[];
   detections: Detection[];
   /** Newest first */
   events: SecurityEvent[];
   /** Road bumps felt while riding, newest first (pothole events from the device) */
   bumps: RoadBump[];
+  /**
+   * Warnings the device works out itself, most severe first. Null when the device doesn't send
+   * any (the test server, the simulator); the app then judges closeness from the detections.
+   */
+  alerts: DeviceAlert[] | null;
 };
 
 export type Connection = 'simulated' | 'connecting' | 'connected' | 'offline';
@@ -86,9 +120,9 @@ export interface DeviceSource {
   /** Plays a short recording (m4a) through the bike's speaker, e.g. the owner's voice. */
   play(audio: Uint8Array): Promise<boolean>;
   /** MJPEG stream URL for a camera, or null when there is no real video (simulation) */
-  streamUrlFor(camera: CameraId): string | null;
+  streamUrlFor(camera: CameraView): string | null;
   /** URL of one still picture from a camera, or null when there is no real video */
-  snapshotUrlFor(camera: CameraId): string | null;
+  snapshotUrlFor(camera: CameraView): string | null;
 }
 
 export const EMPTY_STATE: DeviceState = {
@@ -102,4 +136,5 @@ export const EMPTY_STATE: DeviceState = {
   detections: [],
   events: [],
   bumps: [],
+  alerts: null,
 };

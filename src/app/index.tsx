@@ -28,6 +28,7 @@ import {
   isPedestrianAhead,
   mattersWhileRiding,
   mergeCyclists,
+  seenIn,
   toWorld,
 } from '@/device/geometry';
 import type { Connection, Detection } from '@/device/types';
@@ -77,7 +78,7 @@ function nearestThreat(detections: Detection[]) {
  */
 export default function RideScreen() {
   const insets = useSafeAreaInsets();
-  const { state, connection, streamUrlFor, setMode } = useDevice();
+  const { state, connection, streamUrlFor, setMode, views } = useDevice();
   const trip = useNav();
   const { nav, navigating, progress, route, roads, buildings, areas, position } = trip;
   const { fullView, setFullView } = useRideUi();
@@ -90,7 +91,7 @@ export default function RideScreen() {
   const quiet = riding && !fullView && (navigating || moving);
   const detections = quiet ? everything.filter(mattersWhileRiding) : everything;
 
-  const { camera, automatic, pin } = useAutoCamera(state.cameras, everything);
+  const { camera, automatic, pin } = useAutoCamera(views, everything);
   const threat = nearestThreat(everything);
   const vehicleClose = threat !== null;
   const cameraUp = useLinger(vehicleClose, CAMERA_LINGER_MS);
@@ -150,7 +151,7 @@ export default function RideScreen() {
     <CameraFeed
       streamUrl={streamUrlFor(camera)}
       connection={connection}
-      detections={everything.filter((d) => (d.camera ?? 'front') === camera)}
+      detections={everything.filter((d) => seenIn(d, camera))}
     />
   );
 
@@ -255,9 +256,9 @@ export default function RideScreen() {
               {feed}
               <View style={styles.feedTop}>
                 <Chip dotColor={chip.color}>{chip.label}</Chip>
-                {state.cameras.length > 1 && (
+                {views.length > 1 && (
                   <CameraSwitch
-                    cameras={state.cameras}
+                    cameras={views}
                     value={camera}
                     automatic={automatic}
                     onChange={pin}

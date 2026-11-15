@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { readStored } from '@/lib/storage';
 
 import { isCloseVehicle, toWorld } from '@/device/geometry';
-import type { CameraId, Detection, DeviceMode, RoadBump } from '@/device/types';
+import type { CameraId, Detection, DeviceAlert, DeviceMode, RoadBump } from '@/device/types';
 
 import { deletePictureFolder, deleteRidePictures, savePicture } from './files';
 
@@ -60,6 +60,8 @@ export type RideInput = {
   position: { lat: number; lon: number } | null;
   /** Road bumps the device has reported, newest first */
   bumps: RoadBump[];
+  /** The device's own warnings, or null if it doesn't send any */
+  alerts: DeviceAlert[] | null;
 };
 
 const STORAGE_KEY = 'trax.rides';
@@ -106,6 +108,8 @@ export class RideHistory {
   /** Bumps already looked at, so each is recorded once. */
   private seenBumps = new Set<string>();
   private bumpsPrimed = false;
+  /** Close-pass warnings from the device already counted in this ride */
+  private passAlerts = new Set<string>();
 
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -199,16 +203,29 @@ export class RideHistory {
       if (moved > TRACK_STEP_M && track.length < MAX_TRACK_POINTS) track.push([here.lat, here.lon]);
     }
 
-    // A picture at the moment a vehicle first gets close, from the camera that sees it.
-    const close = input.detections
-      .filter(isCloseVehicle)
-      .sort((a, b) => toWorld(a).distance - toWorld(b).distance)[0];
-    if (close) {
-      if (now - this.lastCloseAt > PASS_GAP_MS) {
+    if (input.alerts) {
+      // The device judges close passes itself, by measured clearance (a car passing within about
+      // a metre), so each of its close-pass warnings is one pass.
+      for (const alert of input.alerts) {
+        if (alert.kind !== 'close_pass' || this.passAlerts.has(alert.id)) continue;
+        this.passAlerts.add(alert.id);
         ride.closePasses += 1;
-        this.capture(ride, input, close.camera ?? 'front', 'close-pass', now);
+        const car = input.detections.find((d) => d.id === alert.trackId);
+        const camera = car?.camera ?? (alert.side === 'ahead' ? 'front' : 'rear');
+        this.capture(ride, input, camera, 'close-pass', now);
       }
-      this.lastCloseAt = now;
+    } else {
+      // A picture at the moment a vehicle first gets close, from the camera that sees it.
+      const close = input.detections
+        .filter(isCloseVehicle)
+        .sort((a, b) => toWorld(a).distance - toWorld(b).distance)[0];
+      if (close) {
+        if (now - this.lastCloseAt > PASS_GAP_MS) {
+          ride.closePasses += 1;
+          this.capture(ride, input, close.camera ?? 'front', 'close-pass', now);
+        }
+        this.lastCloseAt = now;
+      }
     }
 
     // Routine pictures from every camera.
@@ -264,6 +281,7 @@ export class RideHistory {
       potholes: [],
     };
     this.stillSince = null;
+    this.passAlerts.clear();
     this.lastTick = now;
     this.lastFrames = 0;
     this.lastCloseAt = 0;

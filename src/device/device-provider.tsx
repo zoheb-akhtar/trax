@@ -15,7 +15,7 @@ import { setBikeSpeaker } from '@/lib/voice';
 
 import { HttpSource } from './http-source';
 import { MockSource } from './mock-source';
-import type { CameraId, DeviceMode, DeviceSnapshot } from './types';
+import type { CameraView, DeviceMode, DeviceSnapshot } from './types';
 
 export type DeviceSettings = {
   source: 'simulated' | 'device';
@@ -26,8 +26,10 @@ export type DeviceSettings = {
 type DeviceContextValue = DeviceSnapshot & {
   settings: DeviceSettings;
   updateSettings(next: DeviceSettings): void;
-  streamUrlFor(camera: CameraId): string | null;
-  snapshotUrlFor(camera: CameraId): string | null;
+  streamUrlFor(camera: CameraView): string | null;
+  snapshotUrlFor(camera: CameraView): string | null;
+  /** The pictures to offer on screen: usually front and rear, three on the perception rig */
+  views: CameraView[];
   setMode(mode: DeviceMode): void;
   silenceAlarm(): void;
   soundAlarm(): void;
@@ -163,6 +165,7 @@ function ConnectedProvider({
     sayOnBike: (text, urgent) => source.say(text, urgent),
     playOnBike: (audio) => source.play(audio),
     hasSpeaker,
+    views: snapshot.state.views ?? snapshot.state.cameras,
   };
 
   return <DeviceContext value={value}>{children}</DeviceContext>;

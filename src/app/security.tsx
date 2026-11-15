@@ -16,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Spacing, Status, Type } from '@/constants/theme';
 import { useDevice } from '@/device/device-provider';
-import type { CameraId } from '@/device/types';
+import type { CameraView } from '@/device/types';
 import { distance, formatDistance } from '@/nav/geo';
 import { useNav } from '@/nav/nav-provider';
 import type { LatLon } from '@/nav/types';
@@ -33,17 +33,23 @@ function howFar(you: LatLon, place: LatLon) {
   return metres < HERE_M ? 'right by you' : `${formatDistance(metres)} from you`;
 }
 
-const CAMERA_LABEL: Record<CameraId, string> = { front: 'Front', rear: 'Rear' };
+const CAMERA_LABEL: Record<CameraView, string> = {
+  front: 'Front',
+  security: 'Security',
+  rear: 'Rear',
+};
 
 export default function SecurityScreen() {
-  const { state, connection, setMode, streamUrlFor, chirp } = useDevice();
+  const { state, connection, setMode, streamUrlFor, chirp, views } = useDevice();
   const { entries, parked, lastSeen, soundAlarm, deleteEntry } = useSecurity();
   const { position } = useNav();
-  const [camera, setCamera] = useState<CameraId>('rear');
+  // The security camera watches the parked bike, where the device has one.
+  const [picked, setCamera] = useState<CameraView | null>(null);
+  const camera = picked ?? (views.includes('security') ? 'security' : 'rear');
   const [openId, setOpenId] = useState<string | null>(null);
 
   const armed = state.mode === 'security';
-  const shownCamera = state.cameras.includes(camera) ? camera : state.cameras[0];
+  const shownCamera = views.includes(camera) ? camera : views[0];
   const streamUrl = streamUrlFor(shownCamera);
   const open = entries.find((entry) => entry.id === openId) ?? null;
   // Where the bike is, from its own GPS. Out of range, this is where it was last heard from.
@@ -136,9 +142,9 @@ export default function SecurityScreen() {
           <View style={styles.viewer}>
             <CameraFeed streamUrl={streamUrl} connection={connection} detections={[]} />
           </View>
-          {state.cameras.length > 1 && (
+          {views.length > 1 && (
             <View style={styles.cameras}>
-              {state.cameras.map((c) => (
+              {views.map((c) => (
                 <View key={c} style={styles.grow}>
                   <Button
                     title={CAMERA_LABEL[c]}

@@ -1,10 +1,10 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { Type } from '@/constants/theme';
-import type { CameraId } from '@/device/types';
+import type { CameraView } from '@/device/types';
 import { haptic } from '@/lib/haptics';
 
-const LABEL: Record<CameraId, string> = { front: 'Front', rear: 'Rear' };
+const LABEL: Record<CameraView, string> = { front: 'Front', security: 'Security', rear: 'Rear' };
 
 /**
  * Shows which camera is on screen. The app picks the camera itself; tapping one
@@ -16,10 +16,10 @@ export function CameraSwitch({
   automatic,
   onChange,
 }: {
-  cameras: CameraId[];
-  value: CameraId;
+  cameras: CameraView[];
+  value: CameraView;
   automatic: boolean;
-  onChange(camera: CameraId): void;
+  onChange(camera: CameraView): void;
 }) {
   return (
     <View style={styles.track} accessibilityRole="tablist">

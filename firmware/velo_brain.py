@@ -5,7 +5,7 @@ Runs on the Mac today, standing in for the phone. Cameras (velo_config.json sets
 and mount):
     front  Pi camera 1 (board)     road ahead: lanes, path, everything on the road
     seat   USB webcam on the seat  road behind: cars coming up, close passes, blind spots
-    rear   Pi camera 2 (board)     security: people and faces at the bike
+    rear   Pi camera 2 (board)     security: people and faces at the bike (faces forward, beside front)
 
 RIDE mode ("ride" / "drive")
   * YOLO11 (COCO) on the front + seat cameras every frame, YOLO-World for cones, barriers, road

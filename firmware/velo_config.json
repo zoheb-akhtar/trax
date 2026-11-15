@@ -20,9 +20,9 @@
       "role": "security",
       "hfov": 62.2,
       "vfov": 48.8,
-      "height_m": 0.9,
-      "pitch_deg": 0.0,
-      "yaw_deg": 180
+      "height_m": 1.0,
+      "pitch_deg": 4.0,
+      "yaw_deg": 0
     }
   },
   "ring": {

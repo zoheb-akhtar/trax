@@ -1,4 +1,4 @@
-import type { CameraId, Detection } from './types';
+import type { CameraId, CameraView, Detection } from './types';
 
 /**
  * Turns a detection box into a rough position around the bike, and back.
@@ -37,7 +37,14 @@ const CLOSE_LATERAL_M = 3.2;
 
 export type WorldPosition = { x: number; z: number; distance: number };
 
+/** Whether a detection was seen in this camera picture (for drawing its box over the video). */
+export function seenIn(d: Detection, view: CameraView) {
+  return d.view ? d.view === view : (d.camera ?? 'front') === view;
+}
+
 export function toWorld(d: Detection): WorldPosition {
+  // The device measured it from the camera's mounting: better than guessing from the box.
+  if (d.world) return d.world;
   const [bx, , bw, bh] = d.box;
   const size = SIZES[d.label] ?? DEFAULT_SIZE;
   const distance = Math.min(Math.max((size.height * FY) / Math.max(bh, 0.01), 0.5), 80);

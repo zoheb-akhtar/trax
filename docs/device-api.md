@@ -134,6 +134,20 @@ When the IMU sees a fall while in ride mode (a hard jolt followed by the bike ly
 side), add an event with `"kind": "crash"`. Do not sound the alarm. The app starts a
 countdown and then prepares a message to the rider's emergency contact.
 
+## Optional: the device's own positions and warnings
+
+A device that does its own perception (`firmware/velo_brain.py` does) can send more, and the app
+uses it in place of its own estimates. See `firmware/APP_INTEGRATION.md` for the full list.
+
+- `detections[].position`: `[x, z]` in metres, x to the right, **z ahead** (negative = behind), with
+  `detections[].distanceM`. The app places the object there in the 3D view instead of estimating
+  distance from the box. Detections with `group: "sign"` (signs, traffic lights) are left out.
+- `alerts`: `[{id, kind, level, text, side, trackId}]`, most severe first. When the device sends
+  this list (even empty), the app:
+  - counts a close pass for each new `close_pass` alert, instead of its own 7 m rule
+  - speaks the alert `text` for the kinds that matter while riding, one at a time, instead of
+    its own "car behind" lines. Turns and the alarm are still the app's.
+
 ## Pothole detection
 
 While in ride mode, read the IMU's vertical acceleration at 100 Hz or more. A spike more than
