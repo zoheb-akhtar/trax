@@ -233,6 +233,10 @@ export interface DeviceState {
   mcu?: { connected: boolean; imu: boolean; gps: boolean; satellites: number; ring: string | null };
   perf?: Record<string, unknown>;
   health?: Health;
+  /** The physical camera /stream?camera=rear shows now (seat webcam while riding, security cam parked). */
+  rearCamera?: CameraSource;
+  /** Detections from the rear camera that is NOT the one shown as "rear" (so boxes stay on the right picture). */
+  otherDetections?: Detection[];
   ts?: number;
 }
 
@@ -266,7 +270,7 @@ export class VeloClient {
   chirp() { return this.post('/chirp'); }
 
   /** MJPEG: use as an <Image>/<img> source (or a WebView on React Native). */
-  streamUrl(camera: CameraSource = 'front') { return `${this.base}/stream?camera=${camera}`; }
+  streamUrl(camera: CameraSource | 'security' = 'front') { return `${this.base}/stream?camera=${camera}`; }
   snapshotUrl(camera: CameraSource = 'front') { return `${this.base}/snapshot?camera=${camera}`; }
   /** e.g. fileUrl(ev.recording!, 'rear_trigger.jpg') for a notification picture. */
   fileUrl(recording: string, file: string) { return `${this.base}/recordings/${recording}/${file}`; }

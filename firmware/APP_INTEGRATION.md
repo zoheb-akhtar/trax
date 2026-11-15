@@ -145,6 +145,14 @@ Each incident has these fields: `{id, ts, situation, text, side, position, label
 
 **Ride history idea:** a map of the `track` with incident pins. Tapping a pin plays the clip and shows "Car passed 0.5 m from you at 48 km/h". That's evidence of close passes for the rider.
 
+## Which camera is "rear"
+
+The app knows `front` and `rear`. `/stream?camera=rear` shows:
+- **while riding:** the **seat webcam**, the road behind (falling back to the security camera if the webcam is off)
+- **while parked:** the **security camera** (Pi camera 2)
+
+`/state.rearCamera` says which physical camera that is right now. `detections` only contains rear detections **from that camera**, so boxes always land on the picture the app shows. Detections from the other rear camera go to `otherDetections`. To show a specific camera, use `/stream?camera=seat` or `/stream?camera=security`.
+
 ## Camera status
 
 `cameraStatus` in `/state`: `{front: {live, fps, status, role}, seat: {...}, rear: {...}}`. Only open `/stream` for cameras with `live: true`. Browsers allow about 6 connections per host, and a dead stream holds one.

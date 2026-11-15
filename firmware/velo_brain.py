@@ -487,6 +487,14 @@ class Brain:
                                          self.last_ai_t, self.perf, road_state, self.mcu,
                                          calibrated={c: v.get("calibrated") for c, v in self.cfg["cameras"].items()})
         out["health"] = h
+        rear_src = self.source_for_rear().name
+        out["rearCamera"] = rear_src  # which physical camera /stream?camera=rear shows right now
+        # the app draws "rear" detections on its rear view: only keep those from that camera there
+        keep, other = [], []
+        for d in out["detections"]:
+            (other if d["camera"] == "rear" and d.get("source", rear_src) != rear_src
+             and not d.get("alsoSeenBy") else keep).append(d)
+        out["detections"], out["otherDetections"] = keep, other
         if stale:
             out["detections"], out["alerts"], out["surroundings"] = [], [], {}
         rank = {"danger": 0, "caution": 1, "info": 2}
@@ -502,6 +510,19 @@ class Brain:
                           "gps": bool(self.mcu.hb and self.mcu.hb["gps"]),
                           "satellites": gps["sats"] if gps else 0, "ring": self.mcu.hb["ring"] if self.mcu.hb else None}
         return out
+
+    def source_for_rear(self):
+        """The camera the app's 'rear' means right now (see the HTTP handler)."""
+        want = ("road_rear", "security") if self.mode == "ride" else ("security", "road_rear")
+        for role in want:
+            for c, src in self.sources.items():
+                if P.role(c) == role and src.live():
+                    return src
+        for role in want:
+            for c, src in self.sources.items():
+                if P.role(c) == role:
+                    return src
+        return next(iter(self.sources.values()))
 
     def set_mode(self, mode):
         mode = {"drive": "ride", "park": "security", "lock": "security", "unlock": "ride"}.get(mode, mode)
@@ -604,9 +625,12 @@ def make_handler(brain: Brain):
 
         def _camera(self, url):
             cam = parse_qs(url.query).get("camera", ["front"])[0]
-            cam = {"back": "rear"}.get(cam, cam)
-            if cam == "rear" and "rear" not in brain.sources:
-                cam = next((c for c in brain.sources if P.facing(c) == "rear"), "front")
+            if cam in ("rear", "back"):
+                # the app knows "front" and "rear". Its rear view is the road behind (the seat webcam)
+                # while riding, and the security camera while parked; either falls back to the other
+                return brain.source_for_rear()
+            if cam == "security":
+                cam = next((c for c in brain.sources if P.role(c) == "security"), cam)
             return brain.sources.get(cam) or next(iter(brain.sources.values()))
 
         def do_OPTIONS(self):
