@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>GPS Live</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root { --bg:#f7f7f5; --card:#fff; --ink:#151515; --mute:#8a8a85; --line:#e7e6e1;
+          --good:#30a46c; --warn:#f59e0b; --bad:#e5484d; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink);
+         font:16px/1.3 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif; }
+  main { max-width:1150px; margin:0 auto; padding:28px 20px 40px; }
+  header { display:flex; align-items:baseline; justify-content:space-between; gap:16px; margin-bottom:18px; }
+  h1 { font-size:28px; margin:0; letter-spacing:-0.02em; }
+  #link { font-size:14px; color:var(--mute); display:flex; align-items:center; gap:8px; }
+  #dot { width:9px; height:9px; border-radius:50%; background:#c9c9c4; }
+  #dot.live { background:var(--good); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:18px; padding:20px; }
+  .hero { display:flex; align-items:center; gap:18px; margin-bottom:16px; }
+  .badge { font-size:22px; font-weight:700; padding:10px 18px; border-radius:14px; background:#efeee9; color:var(--mute); white-space:nowrap; }
+  .badge.fix { background:#e6f6ed; color:#1d7a4c; }
+  .badge.wait { background:#fff4e5; color:#a35f00; }
+  .badge.none { background:#fdecec; color:#b4232a; }
+  #hint { color:var(--mute); font-size:15px; }
+  .grid { display:grid; grid-template-columns: 1.25fr 1fr; gap:16px; }
+  #map { height:390px; border-radius:12px; background:#eceae4; }
+  .stats { display:grid; grid-template-columns:repeat(2,1fr); gap:18px 14px; }
+  .k { font-size:13px; color:var(--mute); }
+  .v { font-size:28px; font-weight:650; letter-spacing:-0.02em; font-variant-numeric:tabular-nums; }
+  .v small { font-size:15px; color:var(--mute); font-weight:500; }
+  .coords { grid-column: span 2; }
+  .coords .v { font-size:22px; cursor:pointer; }
+  h2 { font-size:15px; margin:0 0 12px; font-weight:600; }
+  h2 span { color:var(--mute); font-weight:500; }
+  .row2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-top:16px; }
+  #sats { display:flex; align-items:flex-end; gap:6px; height:150px; padding-top:10px; }
+  .sat { flex:1; min-width:16px; max-width:34px; display:flex; flex-direction:column; align-items:center; gap:4px; }
+  .sat .bar { width:100%; border-radius:5px 5px 2px 2px; background:#d6d5cf; transition:height .3s; }
+  .sat .bar.used { background:var(--good); }
+  .sat .id { font-size:11px; color:var(--mute); font-variant-numeric:tabular-nums; }
+  #nosats { color:var(--mute); font-size:14px; align-self:center; }
+  .health { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:16px; }
+  .health .v { font-size:22px; }
+  #log { font:12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; height:210px; overflow:auto;
+         background:#fafaf8; border:1px solid var(--line); border-radius:10px; padding:10px; white-space:pre; }
+  #log .bad { color:var(--bad); }
+  .legend { font-size:12px; color:var(--mute); margin-top:8px; }
+  .legend b { display:inline-block; width:10px; height:10px; border-radius:3px; vertical-align:-1px; margin:0 4px 0 10px; }
+  @media (max-width:860px) { .grid, .row2 { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>GPS Live</h1>
+    <div id="link"><span id="dot"></span><span id="linktext">connecting…</span></div>
+  </header>
+
+  <div class="hero card">
+    <div class="badge" id="badge">Waiting</div>
+    <div id="hint">Waiting for the board…</div>
+  </div>
+
+  <div class="grid">
+    <section class="card"><div id="map"></div></section>
+    <section class="card">
+      <div class="stats">
+        <div class="coords"><div class="k">Position <span id="copied"></span></div>
+          <div class="v" id="pos" title="Click to copy">–</div></div>
+        <div><div class="k">Speed</div><div class="v" id="speed">–<small> km/h</small></div></div>
+        <div><div class="k">Heading</div><div class="v" id="course">–<small>°</small></div></div>
+        <div><div class="k">Satellites used</div><div class="v" id="used">0<small> / 0 seen</small></div></div>
+        <div><div class="k">Accuracy (HDOP)</div><div class="v" id="hdop">–</div></div>
+        <div><div class="k">Altitude</div><div class="v" id="alt">–<small> m</small></div></div>
+        <div><div class="k">UTC time</div><div class="v" id="utc">–</div></div>
+      </div>
+    </section>
+  </div>
+
+  <div class="row2">
+    <section class="card">
+      <h2>Satellites <span>signal strength (dB)</span></h2>
+      <div id="sats"><span id="nosats">No satellites heard yet</span></div>
+      <div class="legend"><b style="background:#30a46c"></b>used in fix<b style="background:#d6d5cf"></b>seen</div>
+      <div class="health">
+        <div><div class="k">Data from GPS</div><div class="v" id="rate">0<small> B/s</small></div></div>
+        <div><div class="k">Good sentences</div><div class="v" id="ok">0</div></div>
+        <div><div class="k">Bad checksums</div><div class="v" id="bad">0</div></div>
+      </div>
+    </section>
+    <section class="card">
+      <h2>Raw NMEA <span>newest at the bottom</span></h2>
+      <div id="log"></div>
+    </section>
+  </div>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+let map = null, marker = null, trail = null, centered = false;
+try {
+  map = L.map('map', { zoomControl: true }).setView([20, 0], 2);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+    { maxZoom: 19, attribution: '© OpenStreetMap' }).addTo(map);
+  trail = L.polyline([], { color: '#3e63dd', weight: 4 }).addTo(map);
+} catch (e) { $('map').textContent = 'Map needs internet (Leaflet / OpenStreetMap).'; }
+
+const sats = {};          // prn -> {snr, t}
+let usedPrns = new Set();
+let lastBytes = null, lastBytesT = 0;
+let lastData = 0;
+
+function fmt(v, d, unit = '') {
+  return v === null || v === undefined ? '–' : (+v).toFixed(d) + unit;
+}
+
+function onStatus(s) {
+  lastData = Date.now();
+  const fix = s.fix === 1;
+  const b = $('badge');
+  if (fix) { b.textContent = s.mode === 3 ? '3D fix' : s.mode === 2 ? '2D fix' : 'Fix'; b.className = 'badge fix'; }
+  else if (s.bytes > 0) { b.textContent = 'No fix yet'; b.className = 'badge wait'; }
+  else { b.textContent = 'No data'; b.className = 'badge none'; }
+  if (fix) $('hint').textContent = `Locked on ${s.sats} satellites.`;
+
+  $('pos').textContent = fix && s.lat !== null ? `${s.lat.toFixed(6)}, ${s.lon.toFixed(6)}` : '–';
+  $('speed').innerHTML = `${fmt(s.speed_kmh, 1)}<small> km/h</small>`;
+  $('course').innerHTML = `${fmt(s.course, 0)}<small>°</small>`;
+  $('used').innerHTML = `${s.sats ?? 0}<small> / ${s.view ?? 0} seen</small>`;
+  $('hdop').textContent = s.hdop === null || s.hdop >= 99 ? '–' : `${s.hdop.toFixed(1)} ${s.hdop < 2 ? '· good' : s.hdop < 5 ? '· ok' : '· poor'}`;
+  $('alt').innerHTML = `${fmt(s.alt_m, 0)}<small> m</small>`;
+  const u = String(s.utc ?? '');
+  $('utc').textContent = u.length >= 6 ? `${u.slice(0, 2)}:${u.slice(2, 4)}:${u.slice(4, 6)}` : '–';
+  $('ok').textContent = s.ok ?? 0;
+  $('bad').textContent = s.bad ?? 0;
+  const now = Date.now() / 1000;
+  if (lastBytes !== null && now > lastBytesT) $('rate').innerHTML = `${Math.max(0, Math.round((s.bytes - lastBytes) / (now - lastBytesT)))}<small> B/s</small>`;
+  lastBytes = s.bytes; lastBytesT = now;
+
+  if (map && fix && s.lat !== null) {
+    const p = [s.lat, s.lon];
+    if (!marker) marker = L.circleMarker(p, { radius: 9, color: '#fff', weight: 3, fillColor: '#3e63dd', fillOpacity: 1 }).addTo(map);
+    marker.setLatLng(p);
+    trail.addLatLng(p);
+    if (!centered) { map.setView(p, 18); centered = true; } else if (!map.getBounds().pad(-0.2).contains(p)) map.panTo(p);
+  }
+}
+
+function onNmea(text) {
+  const log = $('log');
+  const atBottom = log.scrollTop + log.clientHeight >= log.scrollHeight - 20;
+  const div = document.createElement('div');
+  div.textContent = text;
+  if (!/\*[0-9A-F]{2}$/i.test(text)) div.className = 'bad';
+  log.appendChild(div);
+  while (log.childNodes.length > 300) log.removeChild(log.firstChild);
+  if (atBottom) log.scrollTop = log.scrollHeight;
+
+  const body = text.split('*')[0].split(',');
+  const type = body[0].slice(3);
+  if (type === 'GSV') {          // $GPGSV,total,num,inview, then [prn,elev,az,snr] x up to 4
+    for (let i = 4; i + 3 < body.length; i += 4) {
+      const prn = body[i];
+      if (!prn) continue;
+      sats[prn] = { snr: body[i + 3] === '' || body[i + 3] === undefined ? 0 : +body[i + 3], t: Date.now() };
+    }
+    drawSats();
+  } else if (type === 'GSA') {   // $GPGSA,mode,fix,prn x12,...
+    usedPrns = new Set(body.slice(3, 15).filter(Boolean));
+    drawSats();
+  }
+}
+
+function drawSats() {
+  const now = Date.now();
+  const list = Object.entries(sats).filter(([, s]) => now - s.t < 10000).sort((a, b) => +a[0] - +b[0]);
+  const box = $('sats');
+  if (!list.length) { box.innerHTML = '<span id="nosats">No satellites heard yet</span>'; return; }
+  box.innerHTML = list.map(([prn, s]) => {
+    const h = Math.max(4, Math.min(1, s.snr / 50) * 120);
+    return `<div class="sat" title="PRN ${prn}: ${s.snr} dB"><div class="bar ${usedPrns.has(prn) ? 'used' : ''}" style="height:${h}px"></div><div class="id">${prn}</div></div>`;
+  }).join('');
+}
+
+$('pos').onclick = () => {
+  const t = $('pos').textContent;
+  if (t !== '–' && navigator.clipboard) navigator.clipboard.writeText(t).then(() => { $('copied').textContent = '· copied'; setTimeout(() => $('copied').textContent = '', 1500); });
+};
+
+const es = new EventSource('/events');
+es.onopen = () => { $('linktext').textContent = 'viewer connected'; };
+es.onmessage = e => {
+  const d = JSON.parse(e.data);
+  if (d.type === 'status') onStatus(d);
+  else if (d.type === 'nmea') onNmea(d.text);
+  else if (d.type === 'hint') $('hint').textContent = d.text;
+  else if (d.type === 'link') { $('linktext').textContent = d.text; $('dot').classList.remove('live'); }
+};
+es.onerror = () => { $('linktext').textContent = 'viewer stopped: run gps_view.py again'; $('dot').classList.remove('live'); };
+setInterval(() => {
+  const live = Date.now() - lastData < 3000;
+  $('dot').classList.toggle('live', live);
+  if (live) $('linktext').textContent = 'live from the board';
+  else if (lastData) $('linktext').textContent = 'no updates from the board (is gps_test running?)';
+  drawSats();
+}, 1000);
+</script>
+</body>
+</html>

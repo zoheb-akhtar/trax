@@ -1,0 +1,14 @@
+# model weights: ./tools/get_models.sh
+*.pt
+*.onnx
+models/
+# park-mode recordings and camera captures (private)
+recordings/
+rides/
+captures/
+hw_diag/out/
+# local machine state
+.venv/
+.board
+back.env
+tools/mac_cams

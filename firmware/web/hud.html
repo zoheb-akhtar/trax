@@ -1,0 +1,424 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Velo HUD</title>
+<!--
+  Velo HUD: a live reference UI for the device API (served by velo_brain.py at /hud).
+  Everything here uses only the public endpoints, so the app can copy the logic:
+    GET /state (polled 4x/s)   GET /stream?camera=...   GET /events/stream (SSE)
+    GET /recordings   GET /ride   POST /lock /unlock /alarm /chirp
+  Ride view: Tesla-style 3D scene drawn from detections[].position/velocity + road.egoPath /
+  leftBoundary / rightBoundary, with the cameras and alerts. Park view: Ring-style status, controls,
+  live cameras and the event timeline with trigger frames, faces and video.
+-->
+<style>
+  :root {
+    --bg: #eceef1; --panel: #ffffff; --ink: #14171c; --mute: #7a828e; --line: #dfe2e7;
+    --road: #d4d8de; --lane: #ffffff; --path: rgba(36, 112, 255, .32); --path-bike: rgba(34, 170, 90, .34);
+    --car: #a7aeb8; --car-top: #c9ced5; --car-side: #8e959f;
+    --info: #3b82f6; --caution: #f59e0b; --danger: #ef4444; --ok: #22a35a;
+    --armed: #f08c00; --motion: #f5b700; --intruder: #e5383b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #101215; --panel: #181b20; --ink: #eef0f3; --mute: #8a929e; --line: #262a31;
+      --road: #23272d; --lane: #cfd4db; --car: #5d6570; --car-top: #78818c; --car-side: #4b525c;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 15px/1.35 -apple-system, BlinkMacSystemFont, "Inter", system-ui, sans-serif; }
+  header { display: flex; align-items: center; gap: 14px; padding: 14px 18px; flex-wrap: wrap; }
+  h1 { font-size: 22px; margin: 0; letter-spacing: -.02em; }
+  .seg { display: inline-flex; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 3px; }
+  .seg button { border: 0; background: transparent; color: var(--mute); font: inherit; font-weight: 600;
+                padding: 7px 16px; border-radius: 9px; cursor: pointer; }
+  .seg button.on { background: var(--ink); color: var(--panel); }
+  .stats { margin-left: auto; display: flex; gap: 18px; color: var(--mute); font-size: 13px; flex-wrap: wrap; }
+  .stats b { color: var(--ink); font-size: 15px; font-variant-numeric: tabular-nums; }
+  .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--mute); margin-right: 6px; }
+  .dot.live { background: var(--ok); }
+  main { padding: 0 18px 24px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; overflow: hidden; }
+  .ride { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(300px, 1fr); gap: 14px; }
+  .scene { position: relative; aspect-ratio: 16 / 10; }
+  #scene { width: 100%; height: 100%; display: block; }
+  .banner { position: absolute; top: 14px; left: 50%; transform: translateX(-50%); color: #fff; font-weight: 700;
+            font-size: 22px; padding: 10px 22px; border-radius: 14px; white-space: nowrap; display: none;
+            box-shadow: 0 6px 24px rgba(0,0,0,.15); }
+  .chips { position: absolute; left: 14px; bottom: 14px; display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip { background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px;
+          font-size: 13px; font-weight: 600; display: none; }
+  .side { display: grid; gap: 14px; align-content: start; }
+  .cams { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px; }
+  .cam { position: relative; background: #000; border-radius: 10px; overflow: hidden; aspect-ratio: 4 / 3; }
+  .cam.wide { grid-column: span 2; }
+  .cam img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .cam canvas { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+  .cam .lbl { position: absolute; left: 8px; bottom: 6px; color: #fff; font-size: 12px; font-weight: 600;
+              text-shadow: 0 1px 3px rgba(0,0,0,.7); }
+  .list { padding: 12px 16px; }
+  .list h2 { font-size: 13px; color: var(--mute); text-transform: uppercase; letter-spacing: .06em; margin: 0 0 8px; }
+  .alert { display: flex; align-items: center; gap: 10px; padding: 7px 0; border-top: 1px solid var(--line); }
+  .alert:first-of-type { border-top: 0; }
+  .alert i { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+  .muted { color: var(--mute); }
+  .kv { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .kv div span { display: block; color: var(--mute); font-size: 12px; }
+  .kv div b { font-size: 20px; font-variant-numeric: tabular-nums; }
+  /* park */
+  .park { display: grid; grid-template-columns: minmax(280px, 380px) minmax(0, 1fr); gap: 14px; }
+  .status { padding: 26px 22px; text-align: center; }
+  .ring { width: 190px; height: 190px; border-radius: 50%; margin: 6px auto 18px; border: 14px solid var(--mute);
+          transition: border-color .3s; }
+  .ring.armed { border-color: var(--armed); animation: breathe 3s ease-in-out infinite; }
+  .ring.motion { border-color: var(--motion); animation: breathe 1s ease-in-out infinite; }
+  .ring.intruder, .ring.alarm { border-color: var(--intruder); animation: flash .35s steps(2) infinite; }
+  @keyframes breathe { 50% { opacity: .45; } }
+  @keyframes flash { 50% { border-color: transparent; } }
+  .state { font-size: 28px; font-weight: 700; letter-spacing: -.02em; }
+  .btns { display: grid; gap: 8px; margin-top: 18px; }
+  .btn { font: inherit; font-weight: 600; border: 1px solid var(--line); background: var(--panel); color: var(--ink);
+         padding: 12px; border-radius: 12px; cursor: pointer; }
+  .btn.primary { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  .btn.red { background: var(--danger); color: #fff; border-color: var(--danger); }
+  .events { display: grid; gap: 12px; padding: 14px; }
+  .event { border: 1px solid var(--line); border-radius: 14px; padding: 12px; }
+  .event .top { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+  .thumbs { display: flex; gap: 8px; overflow-x: auto; }
+  .thumbs img, .thumbs video { height: 120px; border-radius: 10px; background: #000; }
+  .thumbs img.face { height: 80px; align-self: end; }
+  .hidden { display: none !important; }
+  @media (max-width: 900px) { .ride, .park { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>Velo</h1>
+  <div class="seg"><button id="bRide">Ride</button><button id="bPark">Park</button></div>
+  <div class="stats">
+    <span><span class="dot" id="live"></span><b id="conn">connecting</b></span>
+    <span>Speed <b id="speed">–</b></span>
+    <span>GPS <b id="gps">–</b></span>
+    <span>AI <b id="ai">–</b></span>
+    <span>Road <b id="roadhz">–</b></span>
+  </div>
+</header>
+
+<main>
+  <!-- RIDE -->
+  <section class="ride" id="ride">
+    <div class="card scene">
+      <canvas id="scene"></canvas>
+      <div class="banner" id="banner"></div>
+      <div class="chips">
+        <span class="chip" id="cLane"></span><span class="chip" id="cLight"></span>
+        <span class="chip" id="cLead"></span>
+      </div>
+    </div>
+    <div class="side">
+      <div class="card cams" id="rideCams"></div>
+      <div class="card list"><h2>Alerts</h2><div id="alerts" class="muted">Clear</div></div>
+      <div class="card list"><h2>This ride</h2>
+        <div class="kv"><div><span>Distance</span><b id="rDist">0.0</b> km</div>
+          <div><span>Incidents</span><b id="rInc">0</b></div><div><span>Closest pass</span><b id="rPass">–</b></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- PARK -->
+  <section class="park hidden" id="park">
+    <div class="card status">
+      <div class="ring" id="ring"></div>
+      <div class="state" id="sState">Armed</div>
+      <div class="muted" id="sSince"></div>
+      <div class="btns">
+        <button class="btn red" id="bAlarm">Sound alarm</button>
+        <button class="btn" id="bChirp">Find my bike (chirp)</button>
+        <button class="btn primary" id="bUnlock">Unlock and ride</button>
+      </div>
+    </div>
+    <div class="side">
+      <div class="card cams" id="parkCams"></div>
+      <div class="card"><div class="list"><h2>Events</h2></div><div class="events" id="events"></div></div>
+    </div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+let S = null;            // latest /state
+let lastOk = 0;
+const LEVEL = { info: '--info', caution: '--caution', danger: '--danger' };
+const STATE_TEXT = { armed: 'Armed', motion: 'Someone nearby', intruder: 'Intruder', alarm: 'Alarm', disarmed: 'Unlocked' };
+
+// ---------------------------------------------------------------- API
+async function post(path, body) {
+  await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                      body: body ? JSON.stringify(body) : undefined });
+  poll();
+}
+$('bRide').onclick = () => post('/unlock');
+$('bPark').onclick = () => post('/lock');
+$('bUnlock').onclick = () => post('/unlock');
+$('bChirp').onclick = () => post('/chirp');
+$('bAlarm').onclick = () => post('/alarm', { active: !(S && S.alarm) });
+
+async function poll() {
+  try {
+    const r = await fetch('/state', { cache: 'no-store' });
+    S = await r.json();
+    lastOk = Date.now();
+    render();
+  } catch (e) { /* brain restarting */ }
+}
+setInterval(poll, 250);
+setInterval(() => {
+  const live = Date.now() - lastOk < 2000;
+  $('live').classList.toggle('live', live);
+  $('conn').textContent = live ? 'live' : 'no device';
+}, 500);
+
+// new events arrive instantly over server-sent events (the app would use a push notification)
+try {
+  const es = new EventSource('/events/stream');
+  es.onmessage = () => { poll(); loadRecordings(); };
+} catch (e) {}
+
+// ---------------------------------------------------------------- cameras
+const CAM_LABEL = { front: 'Front', seat: 'Seat (behind)', rear: 'Security' };
+// Only cameras that are live get a stream: browsers allow ~6 connections per host, and a stream for
+// a camera that isn't there would hold one open. The others show their status instead.
+function camTiles(el, cams, wideFirst) {
+  const st = (S && S.cameraStatus) || {};
+  const key = cams.map(c => c + (st[c] && st[c].live ? '1' : '0')).join();
+  if (el.dataset.cams === key) return;
+  el.dataset.cams = key;
+  el.innerHTML = cams.map((c, i) => {
+    const live = st[c] ? st[c].live : true;
+    const body = live ? `<img src="/stream?camera=${c}" alt="${c} camera"><canvas data-cam="${c}"></canvas>`
+      : `<div style="position:absolute;inset:0;display:grid;place-items:center;color:#9aa1ab;font-size:13px;padding:12px;text-align:center">${(st[c] && st[c].status) || 'offline'}</div>`;
+    return `<div class="cam ${wideFirst && i === 0 ? 'wide' : ''}">${body}<span class="lbl">${CAM_LABEL[c] || c}</span></div>`;
+  }).join('');
+}
+function drawBoxes() {
+  if (!S) return;
+  document.querySelectorAll('canvas[data-cam]').forEach(cv => {
+    const img = cv.previousElementSibling;
+    const W = cv.clientWidth, H = cv.clientHeight;
+    if (cv.width !== W * devicePixelRatio) { cv.width = W * devicePixelRatio; cv.height = H * devicePixelRatio; }
+    const g = cv.getContext('2d');
+    g.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+    g.clearRect(0, 0, W, H);
+    if (!img.naturalWidth) return;
+    // the image is letterboxed inside the tile (object-fit: contain)
+    const s = Math.min(W / img.naturalWidth, H / img.naturalHeight);
+    const iw = img.naturalWidth * s, ih = img.naturalHeight * s, ox = (W - iw) / 2, oy = (H - ih) / 2;
+    for (const d of S.detections || []) {
+      const views = [];
+      if ((d.source || d.camera) === cv.dataset.cam) views.push(d.box);
+      for (const o of d.alsoSeenBy || []) if (o.source === cv.dataset.cam) views.push(o.box);
+      for (const [x, y, w, h] of views) {
+        const col = d.threat >= 3 ? css('--danger') : d.threat >= 2 ? css('--caution')
+                  : d.light === 'red' ? css('--danger') : d.light === 'green' ? css('--ok') : '#ffffff';
+        g.strokeStyle = col; g.lineWidth = d.threat >= 2 ? 3 : 2;
+        g.strokeRect(ox + x * iw, oy + y * ih, w * iw, h * ih);
+        let t = d.light ? `${d.light} light` : d.label;
+        if (d.distanceM != null && !d.light) t += ` ${Math.round(d.distanceM)}m`;
+        if (d.braking) t += ' BRAKING';
+        g.font = '600 11px -apple-system, system-ui'; const tw = g.measureText(t).width + 8;
+        g.fillStyle = col; g.fillRect(ox + x * iw, oy + y * ih - 16, tw, 16);
+        g.fillStyle = '#000'; g.fillText(t, ox + x * iw + 4, oy + y * ih - 4);
+      }
+    }
+  });
+}
+
+// ---------------------------------------------------------------- 3D scene (Tesla-style chase view)
+// A pinhole camera 11 m behind and 5.5 m above the bike, looking 14 m ahead. World: x right, y up,
+// z ahead (metres) = the API's position [x, z]. The app can use the same projection.
+const CAM = { y: 5.5, z: -11, lookZ: 14 };
+function project(x, y, z, W, H) {
+  const dz = CAM.lookZ - CAM.z, dy = -CAM.y, len = Math.hypot(dz, dy);
+  const f = [0, dy / len, dz / len], u = [0, dz / len, -dy / len];     // forward, up (right = +x)
+  const px = x, py = y - CAM.y, pz = z - CAM.z;
+  const zc = py * f[1] + pz * f[2];
+  if (zc < 0.5) return null;
+  const yc = py * u[1] + pz * u[2];
+  const focal = W * 0.9;
+  return [W / 2 + focal * px / zc, H * 0.42 - focal * yc / zc, zc];
+}
+const SIZE = { vehicle: [1.8, 4.4, 1.5], bicycle: [0.6, 1.8, 1.6], person: [0.55, 0.55, 1.75], animal: [0.4, 0.9, 0.6],
+               micromobility: [0.6, 1.2, 1.6], obstacle: [0.45, 0.45, 0.75] };
+
+function poly(g, pts, fill) {
+  if (pts.some(p => !p)) return;
+  g.beginPath(); pts.forEach((p, i) => i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1])); g.closePath();
+  g.fillStyle = fill; g.fill();
+}
+function shade(hex, k) {  // lighten (k>0) / darken (k<0) a #rrggbb colour
+  const n = parseInt(hex.slice(1), 16), c = [n >> 16, (n >> 8) & 255, n & 255]
+    .map(v => Math.max(0, Math.min(255, Math.round(k > 0 ? v + (255 - v) * k : v * (1 + k)))));
+  return `rgb(${c.join(',')})`;
+}
+
+function drawScene() {
+  const cv = $('scene'), W = cv.clientWidth, H = cv.clientHeight;
+  if (!W) return;
+  if (cv.width !== W * devicePixelRatio) { cv.width = W * devicePixelRatio; cv.height = H * devicePixelRatio; }
+  const g = cv.getContext('2d');
+  g.setTransform(devicePixelRatio, 0, 0, devicePixelRatio, 0, 0);
+  g.fillStyle = css('--bg'); g.fillRect(0, 0, W, H);
+  const P = (x, y, z) => project(x, y, z, W, H);
+  const road = S && S.road && S.road.ok ? S.road : null;
+  const alerts = (S && S.alerts) || [];
+
+  // road surface
+  poly(g, [P(-7, 0, -10), P(7, 0, -10), P(7, 0, 60), P(-7, 0, 60)], css('--road'));
+
+  // side zones lit when something is there (blind spot, car beside you)
+  for (const side of new Set(alerts.filter(a => (a.side === 'left' || a.side === 'right') && a.level !== 'info').map(a => a.side))) {
+    const x0 = side === 'left' ? -3.6 : 0.8;
+    poly(g, [P(x0, 0, -8), P(x0 + 2.8, 0, -8), P(x0 + 2.8, 0, 6), P(x0, 0, 6)], 'rgba(245, 158, 11, .28)');
+  }
+
+  // lane boundaries: white lines, red for a road edge / curb
+  if (road) for (const key of ['leftBoundary', 'rightBoundary']) {
+    const b = road[key]; if (!b) continue;
+    g.strokeStyle = b.type === 'line' ? css('--lane') : css('--danger'); g.lineWidth = 3;
+    g.setLineDash(b.type === 'line' ? [14, 10] : []);
+    g.beginPath();
+    b.points.forEach(([x, z], i) => { const p = P(x, 0, z); if (p) i ? g.lineTo(p[0], p[1]) : g.moveTo(p[0], p[1]); });
+    g.stroke(); g.setLineDash([]);
+  }
+
+  // ego path ribbon (green in a bike lane)
+  const path = (road && road.egoPath) || Array.from({ length: 21 }, (_, z) => [0, z]);
+  const L = [], R = [];
+  for (const [x, z] of path) { L.push(P(x - 0.4, 0, z)); R.push(P(x + 0.4, 0, z)); }
+  poly(g, [...L, ...R.reverse()].filter(Boolean),
+       road && road.laneType === 'bike_lane' ? css('--path-bike') : css('--path'));
+
+  // objects as boxes, far to near (painter's order)
+  const objs = ((S && S.detections) || []).filter(d => d.position && d.group !== 'sign'
+                 && d.label !== 'traffic light' && !(d.label === 'person' && d.onBicycle));
+  objs.sort((a, b) => (b.position[1] - CAM.z) - (a.position[1] - CAM.z));
+  for (const d of objs) {
+    const [x, z] = d.position;
+    if (z < -10 || z > 60) continue;
+    const [w, l, h] = SIZE[d.group] || [0.6, 0.6, 1.0];
+    let base = d.group === 'obstacle' ? '#f08c00' : d.group === 'person' ? '#6b7480'
+             : d.group === 'bicycle' || d.group === 'micromobility' ? '#4f8ef7' : null;
+    if (d.threat >= 3) base = '#ef4444'; else if (d.threat >= 2) base = '#f59e0b';
+    const top = base ? shade(base, .25) : css('--car-top'), side = base ? shade(base, -.2) : css('--car-side'),
+          back = base || css('--car');
+    const x0 = x - w / 2, x1 = x + w / 2, z0 = z - l / 2, z1 = z + l / 2;
+    // the faces the chase camera can see: near end, the side facing the centre line, the top
+    poly(g, [P(x0, 0, z0), P(x1, 0, z0), P(x1, h, z0), P(x0, h, z0)], back);
+    if (x > 0.3) poly(g, [P(x0, 0, z0), P(x0, 0, z1), P(x0, h, z1), P(x0, h, z0)], side);
+    if (x < -0.3) poly(g, [P(x1, 0, z0), P(x1, 0, z1), P(x1, h, z1), P(x1, h, z0)], side);
+    poly(g, [P(x0, h, z0), P(x1, h, z0), P(x1, h, z1), P(x0, h, z1)], top);
+    if (d.braking) {  // brake lights
+      for (const bx of [x0 + 0.15, x1 - 0.45]) poly(g, [P(bx, h * .55, z0), P(bx + .3, h * .55, z0),
+                                                        P(bx + .3, h * .75, z0), P(bx, h * .75, z0)], '#ff2d2d');
+    }
+    if (d.velocity && Math.hypot(...d.velocity) > 0.8) {  // where it's heading over the next second
+      const a = P(x, 0.05, z), b = P(x + d.velocity[0], 0.05, z + d.velocity[1]);
+      if (a && b) { g.strokeStyle = 'rgba(20,23,28,.35)'; g.lineWidth = 2; g.beginPath(); g.moveTo(...a.slice(0, 2)); g.lineTo(...b.slice(0, 2)); g.stroke(); }
+    }
+    const lab = P(x, h + 0.4, z);
+    if (lab && d.distanceM != null && z > -9) {
+      g.fillStyle = css('--ink'); g.font = '600 12px -apple-system, system-ui'; g.textAlign = 'center';
+      g.fillText(`${Math.round(d.distanceM)} m${d.speedKmh != null && d.group === 'vehicle' ? ` · ${Math.round(d.speedKmh)} km/h` : ''}`, lab[0], lab[1]);
+    }
+  }
+
+  // the bike: a low arrow on the road (pointing ahead) with a soft halo, like Tesla's ego car
+  poly(g, [P(-1.1, 0.01, -1.6), P(1.1, 0.01, -1.6), P(1.1, 0.01, 1.6), P(-1.1, 0.01, 1.6)], 'rgba(36,112,255,.16)');
+  poly(g, [P(0, 0.02, 1.3), P(0.45, 0.02, -0.9), P(0, 0.02, -0.4), P(-0.45, 0.02, -0.9)], '#2470ff');
+}
+
+// ---------------------------------------------------------------- render
+function render() {
+  if (!S) return;
+  const park = S.mode === 'security';
+  $('bRide').classList.toggle('on', !park); $('bPark').classList.toggle('on', park);
+  $('ride').classList.toggle('hidden', park); $('park').classList.toggle('hidden', !park);
+  $('speed').textContent = S.speedKmh != null ? `${S.speedKmh.toFixed(0)} km/h` : '–';
+  $('gps').textContent = S.mcu ? (S.position ? 'fix' : `${S.mcu.satellites || 0} sats`) : 'off';
+  $('ai').textContent = S.perf && S.perf.aiHz != null ? `${S.perf.aiHz} Hz` : '–';
+  $('roadhz').textContent = S.road ? `${S.road.hz} Hz` : '–';
+  const cams = S.sources || ['front'];
+  if (park) {
+    camTiles($('parkCams'), ['rear', ...cams.filter(c => c !== 'rear')].filter(c => cams.includes(c)), true);
+    const st = S.security.state;
+    $('ring').className = 'ring ' + st;
+    $('sState').textContent = STATE_TEXT[st] || st;
+    $('sSince').textContent = `since ${new Date(S.security.since).toLocaleTimeString()}` +
+      (S.security.recording ? ' · recording' : '');
+    $('bAlarm').textContent = S.alarm ? 'Silence alarm' : 'Sound alarm';
+  } else {
+    camTiles($('rideCams'), ['front', 'seat', 'rear'].filter(c => cams.includes(c)), true);
+    const top = (S.alerts || [])[0];
+    const b = $('banner');
+    if (top && top.level !== 'info') {
+      b.style.display = 'block'; b.style.background = css(LEVEL[top.level]); b.textContent = top.text;
+    } else b.style.display = 'none';
+    $('alerts').innerHTML = (S.alerts || []).length ? S.alerts.map(a =>
+      `<div class="alert"><i style="background:${css(LEVEL[a.level])}"></i>${a.text}</div>`).join('') : 'Clear';
+    $('alerts').classList.toggle('muted', !(S.alerts || []).length);
+    // chips: lane, relevant traffic light, lead vehicle
+    const lane = S.road && S.road.ok && S.road.laneType !== 'unknown' ? S.road : null;
+    chip('cLane', lane && `${lane.laneType === 'bike_lane' ? 'Bike lane' : 'Traffic lane'} · ${Math.round(lane.laneConfidence * 100)}%`);
+    const light = (S.detections || []).find(d => d.relevant && d.light);
+    chip('cLight', light && `${light.light[0].toUpperCase() + light.light.slice(1)} light${light.distanceM ? ` · ${Math.round(light.distanceM)} m` : ''}`,
+         light && (light.light === 'green' ? css('--ok') : css('--danger')));
+    const lead = (S.detections || []).find(d => d.lead);
+    chip('cLead', lead && `${lead.label} ahead · ${Math.round(lead.distanceM)} m${lead.headwayS ? ` · ${lead.headwayS}s` : ''}${lead.braking ? ' · braking' : ''}`,
+         lead && lead.braking ? css('--danger') : null);
+  }
+  drawBoxes();
+  if (!park) drawScene();
+}
+function chip(id, text, colour) {
+  const el = $(id);
+  el.style.display = text ? 'inline-block' : 'none';
+  if (text) { el.textContent = text; el.style.color = colour || ''; }
+}
+
+// ---------------------------------------------------------------- ride summary + recordings
+async function loadRide() {
+  try {
+    const r = (await (await fetch('/ride')).json()).ride;
+    if (!r) return;
+    $('rDist').textContent = (r.distanceM / 1000).toFixed(1);
+    $('rInc').textContent = r.incidents.length;
+    $('rPass').textContent = r.closestPassM != null ? `${r.closestPassM} m` : '–';
+  } catch (e) {}
+}
+setInterval(loadRide, 3000); loadRide();
+
+async function loadRecordings() {
+  try {
+    const recs = (await (await fetch('/recordings')).json()).recordings;
+    $('events').innerHTML = recs.slice(0, 12).map(r => {
+      const base = `/recordings/${r.id}/`;
+      const trig = r.files.filter(f => f.endsWith('_trigger.jpg')).map(f => `<img src="${base}${f}" alt="${f}">`).join('');
+      const vids = r.files.filter(f => f.endsWith('.mp4')).map(f => `<video src="${base}${f}" controls preload="none" title="${f}"></video>`).join('');
+      const faces = (r.faces || []).slice(0, 6).map(f => `<img class="face" src="${base}${f}" alt="face">`).join('');
+      return `<div class="event"><div class="top"><b>${r.reason || 'Event'}</b>
+        <span class="muted">${new Date(r.started).toLocaleString()}${r.durationS ? ` · ${r.durationS}s` : ''}</span></div>
+        <div class="thumbs">${trig}${faces}${vids}</div></div>`;
+    }).join('') || '<div class="muted">No events yet</div>';
+  } catch (e) {}
+}
+setInterval(() => { if (S && S.mode === 'security') loadRecordings(); }, 5000);
+loadRecordings();
+window.addEventListener('resize', render);
+poll();
+</script>
+</body>
+</html>

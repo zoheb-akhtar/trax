@@ -1,0 +1,16 @@
+[Unit]
+Description=Velo seat (USB webcam) camera
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+User=arduino
+WorkingDirectory=/home/arduino/velo
+ExecStartPre=/bin/sleep 12
+ExecStart=/usr/bin/python3 /home/arduino/velo/uno_q_camera.py --source usb --port 5002
+Restart=always
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
