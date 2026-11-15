@@ -46,6 +46,12 @@ ALLOWED_MODELS = {"claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"}
 MAX_OUTPUT_TOKENS = 16000
 # The password other devices on the network must send. Kept in a file beside this script so it
 # survives restarts (and isn't committed); VELO_PROXY_TOKEN overrides it.
+# Speech to text. "base.en" is small and quick on a laptop; "small.en" is more accurate, slower.
+WHISPER_MODEL = os.environ.get("VELO_WHISPER_MODEL", "base.en")
+MAX_AUDIO_BYTES = 8 * 1024 * 1024
+# Words the model should expect, so "Velo" is not heard as "fellow".
+SPEECH_HINT = "Velo. Arm the bike. Disarm the bike. Anything behind me? Show the rear camera."
+
 TOKEN_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".proxy-token")
 LOCAL_ADDRESSES = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
 
@@ -289,6 +295,31 @@ class Handler(BaseHTTPRequestHandler):
         self._send(200, json.dumps({"text": text}).encode())
         # The words themselves are never logged.
         print(f"POST /v1/transcribe -> 200 in {time.time() - started:.1f}s ({len(audio)} bytes in)")
+
+    def _watch(self) -> None:
+        """POST /v1/watch {pushToken, device} registers this phone; {test: true} sends a test push."""
+        if not self._authorised():
+            return self._error(401, "Wrong proxy token. Check the token in the app's Device tab.")
+        length = self._length(64 * 1024)
+        try:
+            message = json.loads(self.rfile.read(length)) if length else {}
+        except ValueError:
+            return self._error(400, "request body is not JSON")
+        if not isinstance(message, dict) or WATCHER is None:
+            return self._error(400, "request body is not an object")
+        if message.get("test"):
+            problem = WATCHER.push("Velo", "This is a test notification. Alerts will look like this.", "test")
+            if problem:
+                return self._error(502, problem)
+            return self._send(200, json.dumps({"ok": True}).encode())
+        token = str(message.get("pushToken") or "")
+        device = str(message.get("device") or "").rstrip("/")
+        if not re.match(r"^Expo(nent)?PushToken\[[A-Za-z0-9_-]{10,}\]$", token):
+            return self._error(400, "not an Expo push token")
+        if not re.match(r"^https?://[A-Za-z0-9.:\[\]-]{1,100}$", device):
+            return self._error(400, "device must be the bike's address, like http://192.168.1.20:8000")
+        WATCHER.register(token, device)
+        self._send(200, json.dumps({"ok": True}).encode())
 
     def do_POST(self):
         started = time.time()
