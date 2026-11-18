@@ -1,13 +1,13 @@
 [Unit]
-Description=Velo front camera
+Description=Trax front camera
 After=network.target
 StartLimitIntervalSec=0
 
 [Service]
 User=arduino
-WorkingDirectory=/home/arduino/velo
+WorkingDirectory=/home/arduino/trax
 ExecStartPre=/bin/sleep 2
-ExecStart=/usr/bin/python3 /home/arduino/velo/uno_q_camera.py --camera 0 --port 5000
+ExecStart=/usr/bin/python3 /home/arduino/trax/uno_q_camera.py --camera 0 --port 5000
 Restart=always
 RestartSec=3
 Environment=PYTHONUNBUFFERED=1

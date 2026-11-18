@@ -5,7 +5,7 @@ Reads what gps_test.ino prints on the board's USB serial port and shows it at
 http://localhost:8091: fix status, position on a map, speed, satellites with signal bars,
 data health and the raw NMEA sentences.
 
-    python3 ~/velo/gps_test/gps_view.py
+    python3 ~/trax/gps_test/gps_view.py
 
 Needs the UNO Q on USB with gps_test.ino running on the STM32 (../flash_mcu.sh gps_test).
 Only one program can read the serial port at a time. Standard library only.

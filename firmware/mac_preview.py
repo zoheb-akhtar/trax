@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Velo Mac preview: shows a live camera feed with optional YOLO object detection.
+"""Trax Mac preview: shows a live camera feed with optional YOLO object detection.
 
     python mac_preview.py                               # front + back + seat (board over USB or Wi-Fi)
     python mac_preview.py http://localhost:5055/stream  # one stream
@@ -165,7 +165,7 @@ def draw_boxes(frame, boxes):
 
 
 def main():
-    p = argparse.ArgumentParser(description="Velo live preview + YOLO")
+    p = argparse.ArgumentParser(description="Trax live preview + YOLO")
     p.add_argument("sources", nargs="*",
                    default=["board", "board", "auto"],
                    help="MJPEG stream URLs or webcam indexes, shown side by side")
@@ -199,7 +199,7 @@ def main():
     readers = [reader(i, src) for i, src in enumerate(a.sources)]
     names = (a.names.split(",") + [f"CAM {i}" for i in range(len(readers))])[:len(readers)]
     detector = Detector(a.model, a.conf, readers, enabled=not a.no_detect)
-    win = "Velo"
+    win = "Trax"
     cv2.namedWindow(win, cv2.WINDOW_NORMAL)
     th = a.height or (540 if len(readers) <= 2 else 400)
     tw = th * 4 // 3  # placeholder tiles; live tiles keep each camera's own shape

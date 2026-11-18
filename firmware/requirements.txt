@@ -1,4 +1,4 @@
-# Mac side (velo_brain.py, mac_preview.py, hw_diag.py). Python 3.11+.
+# Mac side (trax_brain.py, mac_preview.py, hw_diag.py). Python 3.11+.
 ultralytics>=8.3        # YOLO11 + YOLO-World + ByteTrack (pulls in torch, torchvision)
 opencv-python>=4.10     # also runs YOLOP (cv2.dnn); onnxruntime is used instead if installed (faster)
 numpy

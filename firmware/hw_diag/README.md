@@ -1,9 +1,9 @@
-# Velo hardware diagnostic
+# Trax hardware diagnostic
 
 One command checks the IMU, GPS, NeoPixel ring and both cameras all at once. It prints PASS / WARN / FAIL for each part, then shows live readings. It's kept separate from everything else: it doesn't touch `imu_test`, `gps_test`, `neopixel_*`, the camera pipeline or the app.
 
 ```
-python3 ~/velo/hw_diag/hw_diag.py
+python3 ~/trax/hw_diag/hw_diag.py
 ```
 
 | File | Runs on | What it does |
@@ -50,7 +50,7 @@ Unplug USB and every power source first. Set the meter to continuity (beep) or t
 Plug the board into the Mac by USB, then run:
 
 ```
-cd ~/velo
+cd ~/trax
 python3 hw_diag/hw_diag.py               # full test + live view (Ctrl+C to stop)
 python3 hw_diag/hw_diag.py --no-live     # table only, exit code 1 on any FAIL
 python3 hw_diag/hw_diag.py --live        # just the live view
@@ -66,9 +66,9 @@ python3 hw_diag/hw_diag.py --no-cams     # skip cameras
   - Tilt it (roll and pitch change, and the blue LED on the ring follows the tilt).
   - Move the GPS antenna toward a window or outside (best signal dB and satellites rise; outdoors you get a fix with lat/lon).
 - **Stability verdict:** on exit it prints IMU read errors and GPS bad checksums. Both should be 0 while everything runs together.
-- **Camera frames:** saved to `~/velo/hw_diag/out/front.jpg` and `back.jpg`.
+- **Camera frames:** saved to `~/trax/hw_diag/out/front.jpg` and `back.jpg`.
 
-**VS Code:** open `~/velo`, press **Cmd+Shift+P**, choose **Tasks: Run Task**, then pick one of the **Velo diag** tasks.
+**VS Code:** open `~/trax`, press **Cmd+Shift+P**, choose **Tasks: Run Task**, then pick one of the **Trax diag** tasks.
 
 **Without the Mac script:**
 
@@ -92,7 +92,7 @@ adb shell python3 ~/hw_diag/cam_check.py                 # camera check (or: ssh
 | GPS: no fix | Normal indoors. Outdoors the first fix takes 1 to 5 minutes; it's still a PASS |
 | Ring: D6 stays LOW / HIGH | DIN shorted to GND / to a power bus. Unplug and fix |
 | CAM: sensor missing on CSI n | Reseat that ribbon and reboot the board |
-| CAM: running but no frames | Camera stalled. Check `journalctl -u velo-front` and look for CCI -110 |
+| CAM: running but no frames | Camera stalled. Check `journalctl -u trax-front` and look for CCI -110 |
 | BOARD: hot | Above 80 °C. Add airflow before closing the enclosure |
 
 ## Board facts this relies on

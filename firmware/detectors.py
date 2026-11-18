@@ -1,9 +1,9 @@
-"""Velo's object detectors. Every detector takes BGR frames and returns, per frame,
+"""Trax's object detectors. Every detector takes BGR frames and returns, per frame,
 (xyxy normalized (N, 4), confidence (N,), labels [N]).
 
   YoloDetector   YOLO11 trained on COCO: cars, trucks, buses, motorcycles, bicycles, people,
                  traffic lights, stop signs, animals. The main detector, run on every frame.
-  WorldDetector  YOLO-World v2 with Velo's own vocabulary (WORLD_VOCAB): what COCO doesn't
+  WorldDetector  YOLO-World v2 with Trax's own vocabulary (WORLD_VOCAB): what COCO doesn't
                  know: traffic cones, barricades, road signs, scooters, wheelchairs, strollers,
                  emergency vehicles, faces. Open-vocabulary, so the list is just text (re-bake
                  with tools/bake_world.py after editing). Run at a lower rate.
@@ -21,12 +21,12 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-# COCO classes Velo cares about, with the confidence a track must reach once to be reported.
+# COCO classes Trax cares about, with the confidence a track must reach once to be reported.
 COCO_MIN_CONF = {"person": 0.40, "bicycle": 0.35, "car": 0.40, "motorcycle": 0.35, "bus": 0.40,
                  "train": 0.50, "truck": 0.40, "traffic light": 0.35, "stop sign": 0.50,
                  "cat": 0.50, "dog": 0.45, "horse": 0.50}
 
-# (prompt for YOLO-World, Velo label, min confidence). Prompts use Objects365-style names, which
+# (prompt for YOLO-World, Trax label, min confidence). Prompts use Objects365-style names, which
 # YOLO-World knows best. Emergency vehicles are only kept when they sit on a COCO vehicle box
 # (they refine its label), so a plain car can't become a "police car" by itself.
 WORLD_VOCAB = [
@@ -102,10 +102,10 @@ class YoloDetector(_Ultra):
 
 
 class WorldDetector(_Ultra):
-    """YOLO-World with Velo's baked vocabulary (models/velo-world.pt). Labels come out as Velo
+    """YOLO-World with Trax's baked vocabulary (models/trax-world.pt). Labels come out as Trax
     labels (the second column of WORLD_VOCAB)."""
 
-    PATH = os.path.join(HERE, "models", "velo-world.pt")
+    PATH = os.path.join(HERE, "models", "trax-world.pt")
 
     def __init__(self, path=PATH, imgsz=640, half=True):
         super().__init__(path, imgsz, half, None)
@@ -113,7 +113,7 @@ class WorldDetector(_Ultra):
         for i, n in self.names.items():
             match = next((lab for prompt, lab, _ in WORLD_VOCAB if prompt == n), None)
             self.map[n] = match or n
-        print(f"[detect] YOLO-World ({len(self.names)} Velo classes) on {self.device}", flush=True)
+        print(f"[detect] YOLO-World ({len(self.names)} Trax classes) on {self.device}", flush=True)
 
     def __call__(self, frames, only=None):
         out = []

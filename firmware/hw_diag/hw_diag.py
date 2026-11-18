@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Velo hardware diagnostic: one command, PASS/FAIL for every part, then live readings.
+"""Trax hardware diagnostic: one command, PASS/FAIL for every part, then live readings.
 
-    python3 ~/velo/hw_diag/hw_diag.py              full test, then live monitor (Ctrl+C to stop)
-    python3 ~/velo/hw_diag/hw_diag.py --no-live    full test only (exit code 1 if anything FAILs)
-    python3 ~/velo/hw_diag/hw_diag.py --live       skip the restart, just watch live readings
-    python3 ~/velo/hw_diag/hw_diag.py --flash      force a recompile of the STM32 sketch
+    python3 ~/trax/hw_diag/hw_diag.py              full test, then live monitor (Ctrl+C to stop)
+    python3 ~/trax/hw_diag/hw_diag.py --no-live    full test only (exit code 1 if anything FAILs)
+    python3 ~/trax/hw_diag/hw_diag.py --live       skip the restart, just watch live readings
+    python3 ~/trax/hw_diag/hw_diag.py --flash      force a recompile of the STM32 sketch
 
 What it does:
   1. STM32: compiles + uploads hw_diag.ino the first time (or when you edit it), otherwise just
@@ -62,7 +62,7 @@ class Board:
         if subprocess.run(["adb", "get-state"], capture_output=True, text=True).stdout.strip() == "device":
             self.how = "USB"
             return
-        host = os.environ.get("VELO_HOST", "uno-q.local")
+        host = os.environ.get("TRAX_HOST", "uno-q.local")
         self.ssh = f"arduino@{host}"
         self.how = f"Wi-Fi ({host})"
 
@@ -139,7 +139,7 @@ def port_is_busy(port):
 
 # ---------------------------------------------------------------- seat webcam on this Mac
 def mac_webcam_check(seconds=6):
-    """Grab the seat webcam on this Mac through board.webcam_jpegs, the exact capture velo_brain.py
+    """Grab the seat webcam on this Mac through board.webcam_jpegs, the exact capture trax_brain.py
     uses (full view, 1280x720). Returns (status, message), or None if no USB webcam is on the Mac."""
     sys.path.insert(0, ROOT)
     import board as B
@@ -244,7 +244,7 @@ def live_view(mcu, seconds):
 
 # ---------------------------------------------------------------- main
 def main():
-    ap = argparse.ArgumentParser(description="Velo hardware diagnostic")
+    ap = argparse.ArgumentParser(description="Trax hardware diagnostic")
     ap.add_argument("--flash", action="store_true", help="recompile + upload the STM32 sketch")
     ap.add_argument("--live", action="store_true", help="skip the self-test, only show live readings")
     ap.add_argument("--no-live", action="store_true", help="stop after the PASS/FAIL table")
@@ -252,13 +252,13 @@ def main():
     ap.add_argument("--seconds", type=float, default=0, help="live view duration (0 = until Ctrl+C)")
     a = ap.parse_args()
 
-    print(f"{C['B']}Velo hardware diagnostic{C['0']}")
+    print(f"{C['B']}Trax hardware diagnostic{C['0']}")
     ports = sorted(glob.glob("/dev/cu.usbmodem*"))
     board = Board()
     if not ports and board.how == "USB":
         print("board on adb but no serial port: replug the USB cable")
     if board.run("true", timeout=15).returncode != 0:
-        sys.exit("board not found: plug the UNO Q into this Mac by USB (or set VELO_HOST for Wi-Fi)")
+        sys.exit("board not found: plug the UNO Q into this Mac by USB (or set TRAX_HOST for Wi-Fi)")
     print(f"board: {board.how}")
 
     mcu = None
@@ -318,7 +318,7 @@ def main():
         os.makedirs(OUT, exist_ok=True)
         for name in ("CAM_FRONT", "CAM_BACK", "CAM_SEAT"):
             if cam_results.get(name, ("",))[0] in ("PASS", "WARN"):
-                board.pull(f"/tmp/velo_hw_diag_{name}.jpg", os.path.join(OUT, f"{name.lower()[4:]}.jpg"))
+                board.pull(f"/tmp/trax_hw_diag_{name}.jpg", os.path.join(OUT, f"{name.lower()[4:]}.jpg"))
 
     # 3. Wait for the STM32 results
     mcu_results = {}

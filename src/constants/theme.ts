@@ -46,7 +46,7 @@ export const Status = {
   warn: '#E8930C',
   danger: '#E5484D',
   /** Other cyclists, in the 3D view and on the camera picture */
-  cyclist: '#12B886',
+  cyclist: '#F76707',
 } as const;
 
 export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;

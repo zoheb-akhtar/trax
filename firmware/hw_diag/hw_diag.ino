@@ -1,6 +1,6 @@
-// Velo hardware diagnostic, STM32 side (Arduino UNO Q, Zephyr core).
+// Trax hardware diagnostic, STM32 side (Arduino UNO Q, Zephyr core).
 // Tests the MPU6050, NEO-6M GPS and NeoPixel ring together, prints PASS/WARN/FAIL lines, then
-// streams live readings. Run it from the Mac with:  python3 ~/velo/hw_diag/hw_diag.py
+// streams live readings. Run it from the Mac with:  python3 ~/trax/hw_diag/hw_diag.py
 //
 // Wiring (checked against the UNO Q datasheet, JDIGITAL pin map):
 //   MPU6050  VCC 3.3V bus, GND, SDA -> D20 (PB11, I2C2_SDA = Wire), SCL -> D21 (PB10, I2C2_SCL)
@@ -405,7 +405,7 @@ void setup() {
   Bridge.begin();
   Monitor.begin();
   delay(1500);
-  Monitor.println("\n=== Velo hardware diagnostic: IMU + GPS + NeoPixel ===");
+  Monitor.println("\n=== Trax hardware diagnostic: IMU + GPS + NeoPixel ===");
   if (findPin()) {
     neoInit();
     ringClear();

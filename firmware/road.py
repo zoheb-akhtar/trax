@@ -1,4 +1,4 @@
-"""Velo road understanding: where the road is, the lane you are in, bike lanes, your path.
+"""Trax road understanding: where the road is, the lane you are in, bike lanes, your path.
 
 YOLOP (hustvl/YOLOP, trained on the BDD100K driving dataset) segments every frame of the front
 camera into drivable road and lane lines. This module turns those masks into metres on the road

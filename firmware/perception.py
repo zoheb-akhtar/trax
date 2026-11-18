@@ -1,4 +1,4 @@
-"""Velo perception core: per-camera detections -> one tracked, metric 3D picture around the bike.
+"""Trax perception core: per-camera detections -> one tracked, metric 3D picture around the bike.
 
   * stable global track ids across cameras (a car that passes you keeps its id when it leaves
     the seat camera and enters the front one)
@@ -57,7 +57,7 @@ CLASS_MIN_CONF = {"person": 0.40, "bicycle": 0.35, "car": 0.40, "motorcycle": 0.
                   "wheelchair": 0.40, "stroller": 0.40, "ambulance": 0.45, "fire truck": 0.45,
                   "police car": 0.50, "face": 0.35}
 
-# camera models + roles; set by configure() (velo_brain calls it with velo_config.json)
+# camera models + roles; set by configure() (trax_brain calls it with trax_config.json)
 CAMS: dict[str, G.CameraModel] = G.cameras_from_config(G.DEFAULT_CONFIG)
 
 

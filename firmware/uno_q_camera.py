@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Velo camera server: streams camera frames as MJPEG over HTTP.
+"""Trax camera server: streams camera frames as MJPEG over HTTP.
 
 On the Arduino UNO Q (Linux) it captures the IMX219 through libcamera (Python bindings).
 On a Mac (or any machine with a webcam) it can capture a webcam through OpenCV,
@@ -563,7 +563,7 @@ def capture_opencv(buf, index, width, height, fps, quality):
 
 
 PAGE = """<!doctype html><html><head><meta name=viewport content="width=device-width">
-<title>Velo camera</title><style>body{margin:0;background:#111;display:grid;place-items:center;height:100vh}
+<title>Trax camera</title><style>body{margin:0;background:#111;display:grid;place-items:center;height:100vh}
 img{max-width:100%;max-height:100vh}</style></head><body><img src="/stream"></body></html>"""
 
 
@@ -599,7 +599,7 @@ def make_app(buf):
 
 def main():
     on_linux = platform.system() == "Linux"
-    p = argparse.ArgumentParser(description="Velo MJPEG camera server")
+    p = argparse.ArgumentParser(description="Trax MJPEG camera server")
     p.add_argument("--source", default="raw" if on_linux else "0",
                    help="'raw' (UNO Q, own ISP), 'usb' (USB webcam, MJPEG passthrough), 'libcamera', "
                         "'gstreamer', or a webcam index like 0")

@@ -1,4 +1,4 @@
-# Velo camera
+# Trax camera
 
 ## Board (UNO Q) — current working setup
 Quick start from the Mac (also the fix whenever the preview says URLError, e.g. after the board restarted):
@@ -11,9 +11,9 @@ Camera 0 (CAM0) = front, camera 1 (CAM1) = back. Power the board off before plug
 
 Start both streams on the board (front 1640x1232 30 fps on :5000; back 820x616 30 fps on :5001, where
 each RGGB cell becomes one pixel (no demosaic, ~1/2 the CPU), with a short shutter so passing cars don't blur):
-    adb push uno_q_camera.py /home/arduino/velo/
-    adb shell 'cd ~/velo && (setsid nohup python3 uno_q_camera.py --camera 0 --port 5000 > server.log 2>&1 < /dev/null &)'
-    adb shell 'cd ~/velo && (setsid nohup python3 uno_q_camera.py --camera 1 --port 5001 --width 820 --height 616 --fps 30 --workers 2 --max-exposure-ms 17 --hflip --vflip > server_back.log 2>&1 < /dev/null &)'
+    adb push uno_q_camera.py /home/arduino/trax/
+    adb shell 'cd ~/trax && (setsid nohup python3 uno_q_camera.py --camera 0 --port 5000 > server.log 2>&1 < /dev/null &)'
+    adb shell 'cd ~/trax && (setsid nohup python3 uno_q_camera.py --camera 1 --port 5001 --width 820 --height 616 --fps 30 --workers 2 --max-exposure-ms 17 --hflip --vflip > server_back.log 2>&1 < /dev/null &)'
 --hflip mirrors the front camera like a selfie view (done in the sensor, no CPU; --vflip flips
 upside down; the pipeline follows the Bayer order the flips produce).
 CPU with both running: ~3.1 of 4 cores (front ~1.95, back ~1.15). Use a 5V/3A supply.
@@ -53,9 +53,9 @@ The board clock resets on boot; set it before apt:
 On the owner's Mac, .venv reuses ~/duino-vision/.venv packages (OpenCV, ultralytics, torch) via a .pth file
 because the Mac disk was full; only Flask lives in this venv.
 
-## Velo brain: dual-camera perception + the app's device API
+## Trax brain: dual-camera perception + the app's device API
 
-`velo_brain.py` (runs on the Mac now, standing in for the phone) reads both camera streams,
+`trax_brain.py` (runs on the Mac now, standing in for the phone) reads both camera streams,
 runs YOLO11s on the newest front + rear frame together, tracks everything with stable ids
 across both cameras (`perception.py`), and serves the app's API (`docs/device-api.md` in the
 app repo) on port 8000.
@@ -63,9 +63,9 @@ app repo) on port 8000.
 ```bash
 ./start.sh                                             # cameras on the board
 source .venv/bin/activate
-python velo_brain.py --show                            # + demo window with top-down radar
-python velo_brain.py --show --voice                    # + spoken warnings
-python velo_brain.py --front 0 --rear none --seat none --show   # Mac webcam only (testing)
+python trax_brain.py --show                            # + demo window with top-down radar
+python trax_brain.py --show --voice                    # + spoken warnings
+python trax_brain.py --front 0 --rear none --seat none --show   # Mac webcam only (testing)
 ```
 
 Point the app at `<Mac IP>:8000` (printed on start) or `localhost:8000` in the simulator.
@@ -92,15 +92,15 @@ Mac 5057, started by `start.sh`). The webcam compresses to JPEG itself, so the b
 its frames through: almost no CPU. The brain treats it as a second rear-facing camera: its
 detections go to the app as `camera: "rear"` with `source: "seat"`, and a car seen by both rear
 cameras is reported once (one id, the seat camera's box, the other view in `alsoSeenBy`).
-`mac_preview.py` and `velo_brain.py --show` show all three cameras. Webcam plugged into the Mac
-instead (testing): `python velo_brain.py --show --seat 1` (1 = second camera on the Mac).
+`mac_preview.py` and `trax_brain.py --show` show all three cameras. Webcam plugged into the Mac
+instead (testing): `python trax_brain.py --show --seat 1` (1 = second camera on the Mac).
 
 ### Connecting (no hotspot needed when wired)
 
-`velo_brain.py` and `mac_preview.py` find everything by themselves (`board.py`):
+`trax_brain.py` and `mac_preview.py` find everything by themselves (`board.py`):
 - **Board:** USB cable to the Mac first (adb, no network at all), else Wi-Fi (`uno-q.local`).
   Re-checked whenever a stream drops, so swapping cable/Wi-Fi recovers on its own.
-  The camera servers start at boot on the board (systemd `velo-front/back/seat`).
+  The camera servers start at boot on the board (systemd `trax-front/back/seat`).
 - **Seat webcam:** used on the Mac if plugged in here (opened by name via ffmpeg), else the board's.
 
 Wired setup on the MacBook: board -> one USB-C port directly; hub (webcam) -> the other.
@@ -110,23 +110,23 @@ The hub's USB-C port only charges: a board plugged in there gets power but no da
 ## Perception v2: Tesla-style ride mode + Ring-style park mode (2026-11-15)
 
 ```
-.venv/bin/python velo_brain.py --show --voice     # everything, with the Tesla-style window (P park, R ride)
+.venv/bin/python trax_brain.py --show --voice     # everything, with the Tesla-style window (P park, R ride)
 .venv/bin/python tests/test_perception_sim.py     # 12 traffic scenarios (clean + noisy) through the real geometry
 .venv/bin/python tests/test_security_rides.py     # park-mode state machine, recordings, ride incidents
-./flash_mcu.sh velo_mcu                           # STM32 firmware the brain talks to (ring, IMU, GPS)
+./flash_mcu.sh trax_mcu                           # STM32 firmware the brain talks to (ring, IMU, GPS)
 ```
 
 | File | What |
 |---|---|
-| `detectors.py` | YOLO11 (COCO) + YOLO-World with Velo's vocabulary (`models/velo-world.pt`, re-bake: `tools/bake_world.py`) + face finder |
+| `detectors.py` | YOLO11 (COCO) + YOLO-World with Trax's vocabulary (`models/trax-world.pt`, re-bake: `tools/bake_world.py`) + face finder |
 | `road.py` | YOLOP (BDD100K) drivable area + lane lines, in its own process: your lane, bike lane or not, ego path |
-| `geometry.py` | camera mount model: pixels <-> metres on the road. Mounts in `velo_config.json` |
+| `geometry.py` | camera mount model: pixels <-> metres on the road. Mounts in `trax_config.json` |
 | `perception.py` | tracking across cameras, metric 3D positions, velocities, collision prediction (CPA), rider situations |
 | `security.py` | park mode: motion detection, pre-trigger recording (H.264), faces, events, state machine |
-| `mcu.py` + `velo_mcu/` | STM32 link + firmware: ring patterns, hazard direction, IMU tamper / crash / pothole, GPS |
+| `mcu.py` + `trax_mcu/` | STM32 link + firmware: ring patterns, hazard direction, IMU tamper / crash / pothole, GPS |
 | `rides.py` | ride log + dashcam: danger situations become incidents with clips, GPS and close-pass clearance |
 | `web/hud.html` | live web HUD at `http://localhost:8000/hud` (Tesla ride view, Ring park view) |
-| `api/velo-api.ts` | TypeScript types + client for the app |
+| `api/trax-api.ts` | TypeScript types + client for the app |
 | `APP_INTEGRATION.md` | for the app team: every field, alert kind, event, endpoint, and UI suggestions |
 
 Camera roles: front = road ahead, seat webcam = road behind, Pi camera 2 (`rear`) = security (people, faces).

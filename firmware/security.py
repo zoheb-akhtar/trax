@@ -1,11 +1,11 @@
-"""Velo park mode: a Ring doorbell for the bike.
+"""Trax park mode: a Ring doorbell for the bike.
 
   MotionDetector   per camera: background subtraction (MOG2) on a small grey image; ignores
                    whole-frame light changes (clouds, headlights)
   Recorder         keeps the last few seconds of every camera in memory; on a trigger writes
                    H.264 MP4s that start BEFORE the trigger, plus the exact trigger frames
   Notifier         the event feed: /state events (app kinds: motion, tamper, crash, pothole),
-                   /events/stream (server-sent events), optional webhook (VELO_WEBHOOK env).
+                   /events/stream (server-sent events), optional webhook (TRAX_WEBHOOK env).
                    Phone push (APNs / FCM) plugs in here: see APP_INTEGRATION.md
   SecurityMonitor  the state machine
                        disarmed  (ride mode)
@@ -221,7 +221,7 @@ class Notifier:
         self.events = deque(maxlen=keep)
         self.cond = threading.Condition()
         self.seq = 0
-        self.webhook = os.environ.get("VELO_WEBHOOK")
+        self.webhook = os.environ.get("TRAX_WEBHOOK")
 
     def emit(self, kind, **fields):
         ts = int(time.time() * 1000)

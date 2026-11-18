@@ -1,6 +1,6 @@
-# Velo app integration guide
+# Trax app integration guide
 
-For the app team. The device (today: `velo_brain.py` on a Mac standing in for the phone) serves everything below on port 8000. Everything in the original contract (`docs/device-api.md` in the app repo) still works unchanged. This guide covers what's **new**, and suggests how to show it.
+For the app team. The device (today: `trax_brain.py` on a Mac standing in for the phone) serves everything below on port 8000. Everything in the original contract (`docs/device-api.md` in the app repo) still works unchanged. This guide covers what's **new**, and suggests how to show it.
 
 ## Modes
 
@@ -68,7 +68,7 @@ For the app team. The device (today: `velo_brain.py` on a Mac standing in for th
 }
 ```
 
-Distances and positions come from each camera's mount geometry (`velo_config.json`). They're good to about 10 % within 15 m once the mount height and tilt are measured. Use `ttcS`, `cpa` and `closingMps` for urgency, because they are more reliable than the exact distance.
+Distances and positions come from each camera's mount geometry (`trax_config.json`). They're good to about 10 % within 15 m once the mount height and tilt are measured. Use `ttcS`, `cpa` and `closingMps` for urgency, because they are more reliable than the exact distance.
 
 ## Alert kinds (ride mode)
 
@@ -130,7 +130,7 @@ Each incident has these fields: `{id, ts, situation, text, side, position, label
 ## Reference UI and types
 
 - **`GET /hud`:** a live web HUD served by the device, using only this API. Ride view: Tesla-style 3D scene, cameras with boxes, alerts, ride stats. Park view: Ring-style status ring, alarm / chirp / unlock buttons, live cameras, event timeline with trigger frames, faces and video. Open `http://<device>:8000/hud` and read `firmware/web/hud.html`, which has the projection math, box drawing and SSE handling.
-- **`firmware/api/velo-api.ts`:** TypeScript types for every response, plus a small typed `VeloClient` (`state()`, `lock()`, `recordings()`, `fileUrl()`, `onEvent()`...) and helpers (`topAlert`, `litSides`, `project`). It passes `tsc --strict`. Copy it into `src/device/`.
+- **`firmware/api/trax-api.ts`:** TypeScript types for every response, plus a small typed `TraxClient` (`state()`, `lock()`, `recordings()`, `fileUrl()`, `onEvent()`...) and helpers (`topAlert`, `litSides`, `project`). It passes `tsc --strict`. Copy it into `src/device/`.
 
 ## Park mode (security)
 
@@ -168,7 +168,7 @@ Kinds are the app's existing ones: `motion`, `tamper`, `crash`, `pothole`. Potho
 ## TODO for the app (not implemented on the device side)
 
 - [ ] **Push notifications.**
-  - `security.Notifier.emit` is the hook. It already POSTs every event as JSON to `VELO_WEBHOOK` if that environment variable is set.
+  - `security.Notifier.emit` is the hook. It already POSTs every event as JSON to `TRAX_WEBHOOK` if that environment variable is set.
   - Point it at the app backend and send APNs / FCM from there, with `<camera>_trigger.jpg` as the picture.
 - [ ] **Lock / unlock button:** `POST /lock` and `POST /unlock`.
 - [ ] **Event screen:** trigger picture, face crops, video player for the MP4s, "Sound alarm" button, and a live view.
@@ -177,7 +177,7 @@ Kinds are the app's existing ones: `motion`, `tamper`, `crash`, `pothole`. Potho
   - side-zone highlights from `alerts[].side` or `surroundings.zones`
   - lane status from `surroundings.lane`
   - 3D view as described above
-- [ ] **Voice:** speak `alerts[].text` for `level >= caution`, at most one every few seconds per kind. `velo_brain.py --voice` shows the cadence.
+- [ ] **Voice:** speak `alerts[].text` for `level >= caution`, at most one every few seconds per kind. `trax_brain.py --voice` shows the cadence.
 - [ ] **Connection:** Bluetooth / Wi-Fi to the phone (planned). Today it's the Mac over USB.
 
 ## Notes for the device side
@@ -186,6 +186,6 @@ Kinds are the app's existing ones: `motion`, `tamper`, `crash`, `pothole`. Potho
   - YOLO11 and YOLO-World: `yolo export format=coreml`
   - YOLOP: ONNX → CoreML
 - **Perception logic:** `perception.py` is plain numpy, so it ports directly.
-- **Mount calibration:** set `velo_config.json` → `cameras.<name>.height_m` / `pitch_deg` after mounting.
-  - Check: the drawn ego path should sit flat on the road in `velo_brain.py --show`.
+- **Mount calibration:** set `trax_config.json` → `cameras.<name>.height_m` / `pitch_deg` after mounting.
+  - Check: the drawn ego path should sit flat on the road in `trax_brain.py --show`.
   - Check: a car known to be 10 m away should read about 10 m.

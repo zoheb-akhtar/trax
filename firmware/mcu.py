@@ -1,9 +1,9 @@
-"""Link to the STM32 running velo_mcu.ino, over the UNO Q's USB serial port, or over Wi-Fi.
+"""Link to the STM32 running trax_mcu.ino, over the UNO Q's USB serial port, or over Wi-Fi.
 
 With the USB cable in, it uses /dev/cu.usbmodem*. Without it (the board on its own charger, on
-the same Wi-Fi), it connects to the board's sensor port instead: VELO_HOST (default
-uno-q.local), port VELO_MCU_PORT (default 5010). The board serves that port with
-board/velo-mcu.service (see board/README_MCU_WIFI.md).
+the same Wi-Fi), it connects to the board's sensor port instead: TRAX_HOST (default
+uno-q.local), port TRAX_MCU_PORT (default 5010). The board serves that port with
+board/trax-mcu.service (see board/README_MCU_WIFI.md).
 
     mcu = Mcu(on_event=print)       # finds /dev/cu.usbmodem*, reconnects by itself
     mcu.mode("park")                # MODE off|drive|park
@@ -25,8 +25,8 @@ import threading
 import time
 
 
-WIFI_HOST = os.environ.get("VELO_HOST", "uno-q.local")
-WIFI_PORT = int(os.environ.get("VELO_MCU_PORT", "5010"))
+WIFI_HOST = os.environ.get("TRAX_HOST", "uno-q.local")
+WIFI_PORT = int(os.environ.get("TRAX_MCU_PORT", "5010"))
 
 
 class Mcu:
@@ -89,7 +89,7 @@ class Mcu:
 
     def yaw_rate(self, axis="gz", sign=1.0):
         """Rotation rate about the vertical (rad/s, + = turning right). Axis/sign depend on how
-        the IMU is mounted: set imu_yaw in velo_config.json."""
+        the IMU is mounted: set imu_yaw in trax_config.json."""
         i = self.imu
         if i and time.time() - i["t"] < 0.5:
             return sign * i[axis] * 3.14159265 / 180

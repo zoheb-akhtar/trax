@@ -1,4 +1,4 @@
-# Velo device: full context
+# Trax device: full context
 
 Everything about the bike device: hardware, wiring, how the pieces connect, the software on each part, what's tested, and the traps already hit. The app lives in the rest of this repo (renamed **Trax**). This folder is the device side.
 
@@ -8,7 +8,7 @@ For the app-facing contract (every `/state` field, alert kind, event, endpoint a
 
 ## 1. What it is
 
-Velo is "Ring for bikes + a sixth sense".
+Trax is "Ring for bikes + a sixth sense".
 
 - **Ride mode:** Tesla-style perception around the bike. It covers:
   - cars, bikes, pedestrians, signs and lights
@@ -26,13 +26,13 @@ Velo is "Ring for bikes + a sixth sense".
                      USB-C (adb + serial)                    later: Bluetooth / Wi-Fi
   ┌──────────────────────┐        ┌─────────────────────────────┐         ┌───────────┐
   │ Arduino UNO Q (4 GB) │◄──────►│ Mac = stand-in for the phone │◄──────►│ Trax app  │
-  │  Linux (QRB2210):    │        │  velo_brain.py               │  HTTP  │           │
+  │  Linux (QRB2210):    │        │  trax_brain.py               │  HTTP  │           │
   │   camera servers     │ MJPEG  │   YOLO11 + YOLO-World + YOLOP│  :8000 │           │
   │   :5000 front        │───────►│   3D tracking, alerts        │        └───────────┘
   │   :5001 back         │        │   park mode, recordings      │
   │   :5002 seat (opt.)  │        │  seat webcam (USB, on Mac)   │
   │  STM32U585 MCU:      │ serial │                              │
-  │   velo_mcu firmware  │◄──────►│  mcu.py                      │
+  │   trax_mcu firmware  │◄──────►│  mcu.py                      │
   │   IMU / GPS / ring   │        └─────────────────────────────┘
   └──────────────────────┘
 ```
@@ -124,9 +124,9 @@ Over that USB-C link:
 
   | Service | Port | Output |
   |---|---|---|
-  | `velo-front` | 5000 | camera 0, 1640×1232 full view, 30 fps (about 2 cores) |
-  | `velo-back` | 5001 | camera 1, 820×616 binned, `--hflip --vflip`, fps from `~/velo/back.env` (default 15; `start.sh --full` = 30) |
-  | `velo-seat` | 5002 | USB webcam MJPEG passthrough. Only gives frames if the webcam is plugged into the **board**. |
+  | `trax-front` | 5000 | camera 0, 1640×1232 full view, 30 fps (about 2 cores) |
+  | `trax-back` | 5001 | camera 1, 820×616 binned, `--hflip --vflip`, fps from `~/trax/back.env` (default 15; `start.sh --full` = 30) |
+  | `trax-seat` | 5002 | USB webcam MJPEG passthrough. Only gives frames if the webcam is plugged into the **board**. |
 
 - **Enabling the cameras** (needed once; reboot after):
   ```
@@ -167,7 +167,7 @@ Over that USB-C link:
   2. times each bit with the DWT cycle counter (160 MHz)
   3. disables interrupts for about 0.5 ms per frame
 
-**`velo_mcu/`: the production firmware the brain talks to.** It works standalone too: when parked, tamper turns the ring red without the Mac.
+**`trax_mcu/`: the production firmware the brain talks to.** It works standalone too: when parked, tamper turns the ring red without the Mac.
 
 ```
 Brain -> MCU:  PING | MODE off|drive|park | RING off|drive|armed|motion|intruder|alarm
@@ -196,7 +196,7 @@ MCU -> brain:  I ax ay az gx gy gz (20 Hz) | G fix sats lat lon kmh course hdop 
   | alarm | red + white strobe |
   | chirp | white flashes |
 
-**Test sketches** (flashing any of them replaces `velo_mcu`; run `./flash_mcu.sh velo_mcu` to go back):
+**Test sketches** (flashing any of them replaces `trax_mcu`; run `./flash_mcu.sh trax_mcu` to go back):
 - `hw_diag/`: PASS / FAIL for every part. Run `python3 hw_diag/hw_diag.py`.
 - `imu_test/` + `imu_view.py`: browser 3D tilt view on :8090.
 - `gps_test/` + `gps_view.py`: map view on :8091.
@@ -204,19 +204,19 @@ MCU -> brain:  I ax ay az gx gy gz (20 Hz) | G fix sats lat lon kmh course hdop 
 
 ---
 
-## 6. The brain (Mac): `velo_brain.py`
+## 6. The brain (Mac): `trax_brain.py`
 
 | File | What |
 |---|---|
-| `detectors.py` | **YOLO11s** (COCO: vehicles, bikes, people, lights, stop signs) on every frame. **YOLO-World v2**, baked with Velo's vocabulary, at about 3 Hz: cones, barriers, speed limit / yield / crosswalk / one-way / no-entry signs, scooters, wheelchairs, strollers, ambulance / fire truck / police car (only relabels a COCO vehicle), faces. Plus OpenCV face cascades. |
+| `detectors.py` | **YOLO11s** (COCO: vehicles, bikes, people, lights, stop signs) on every frame. **YOLO-World v2**, baked with Trax's vocabulary, at about 3 Hz: cones, barriers, speed limit / yield / crosswalk / one-way / no-entry signs, scooters, wheelchairs, strollers, ambulance / fire truck / police car (only relabels a COCO vehicle), faces. Plus OpenCV face cascades. |
 | `road.py` | **YOLOP** (BDD100K) drivable area + lane lines on the front camera, in its **own process** (2 threads). It works out: lane boundaries (line or curb), lane width, **bike lane** (narrow lane between a line and the curb, or green paint), offset from the lane centre, and the **ego path** (from IMU yaw rate + GPS speed when moving, otherwise following the lane shape). |
-| `geometry.py` + `velo_config.json` | Each camera's lens FOV, mount height, tilt and heading. Converts pixels to metres on the road. **Calibrate after mounting:** set `height_m` / `pitch_deg` so the drawn path sits on the road and a car known to be 10 m away reads 10 m. Also holds camera roles and ring orientation. |
+| `geometry.py` + `trax_config.json` | Each camera's lens FOV, mount height, tilt and heading. Converts pixels to metres on the road. **Calibrate after mounting:** set `height_m` / `pitch_deg` so the drawn path sits on the road and a car known to be 10 m away reads 10 m. Also holds camera roles and ring orientation. |
 | `perception.py` | ByteTrack per camera, with **global ids across cameras** (a car passing from the seat view to the front view keeps its id, and its motion state). Distance is the ground-contact point fused with the typical object size. A **Kalman filter** per track (constant velocity on the road plane) gives smooth positions and velocities. On top of that: closest-point-of-approach collision prediction (collision warnings only once the velocity has settled, and only for things in or entering the path), the **lead vehicle** and its **brake lights**, the **traffic light that applies to you**, and a **green-light alert**. About 25 situation types; the more specific alert wins at equal severity. |
 | `rides.py` | Ride log + dashcam: each danger situation becomes an **incident** with clips from 6 s before, GPS, the car's speed and the close-pass **clearance**. Ride summary at `/ride`; history at `/rides`. |
 | `web/hud.html` | Live web HUD at `/hud`. Ride view: Tesla-style 3D chase view. Park view: Ring-style. Uses only the public API, as a reference for the app. |
-| `api/velo-api.ts` | TypeScript types for every response, plus a typed client. Passes `tsc --strict`. Copy it into the app. |
-| `security.py` | Park mode: MOG2 motion detection, a recorder that keeps 6 s of pre-roll and writes H.264 MP4s plus trigger JPEGs, face crops, a Notifier (events, SSE, optional `VELO_WEBHOOK` POST), and the state machine. |
-| `mcu.py` | Serial link to `velo_mcu`. |
+| `api/trax-api.ts` | TypeScript types for every response, plus a typed client. Passes `tsc --strict`. Copy it into the app. |
+| `security.py` | Park mode: MOG2 motion detection, a recorder that keeps 6 s of pre-roll and writes H.264 MP4s plus trigger JPEGs, face crops, a Notifier (events, SSE, optional `TRAX_WEBHOOK` POST), and the state machine. |
+| `mcu.py` | Serial link to `trax_mcu`. |
 | `board.py` | Finds the board (adb first, else Wi-Fi) and sets up forwards. Captures the **seat webcam on the Mac**, as explained below. |
 | `mac_preview.py` | Simple camera preview with YOLO. |
 | `tests/test_perception_sim.py` | 12 synthetic traffic scenarios through the real geometry, including noisy detector boxes and a lead car's brake lights coming on. **All 12 pass.** |
@@ -224,7 +224,7 @@ MCU -> brain:  I ax ay az gx gy gz (20 Hz) | G fix sats lat lon kmh course hdop 
 
 **Gotcha:** browsers allow about 6 connections per host. Never keep an MJPEG stream open for a camera that isn't live: check `cameraStatus[cam].live`. The brain also closes a stream after 5 s without frames.
 
-**Camera roles** (`velo_config.json`):
+**Camera roles** (`trax_config.json`):
 - `front` = `road_front`
 - `seat` = `road_rear`
 - `rear` (Pi camera 2) = `security`
@@ -238,14 +238,14 @@ In the app's `camera` field, `seat` and `rear` both report as `"rear"`, and `sou
 - **Picking the camera:** OpenCV numbers cameras **sorted by unique ID**, while macOS's own list order changes between runs. `tools/mac_cams.swift` (compiled automatically) maps the camera name to OpenCV's number.
 - **One reader at a time:** opening the webcam from several programs at once froze it, and only a replug fixed it.
 
-**Models** (not in git): run `./tools/get_models.sh`. It downloads YOLOP and YOLO11s and bakes `models/velo-world.pt`.
+**Models** (not in git): run `./tools/get_models.sh`. It downloads YOLOP and YOLO11s and bakes `models/trax-world.pt`.
 
 **Run:**
 ```
 pip install -r requirements.txt && ./tools/get_models.sh
-./flash_mcu.sh velo_mcu                          # once
-python velo_brain.py --show --voice              # P = park, R = ride, D = boxes, Q = quit
-python velo_brain.py --front ride.mp4 --seat none --rear none --no-mcu --show   # test on a recording
+./flash_mcu.sh trax_mcu                          # once
+python trax_brain.py --show --voice              # P = park, R = ride, D = boxes, Q = quit
+python trax_brain.py --front ride.mp4 --seat none --rear none --no-mcu --show   # test on a recording
 ```
 
 **Performance** (M1 MacBook Air, battery, Low Power Mode):
@@ -293,7 +293,7 @@ Lessons:
 
 **Not yet verified:**
 - **YOLOP road / lane / bike-lane detection on a real street.** There was no street footage, so record a ride and test with `--front ride.mp4`.
-- Camera mount calibration (`velo_config.json`).
+- Camera mount calibration (`trax_config.json`).
 - Crash and pothole detection on a real ride.
 - The bike power setup: board as USB host through the hub, on a power bank.
 - The wireless link to the app (Bluetooth / Wi-Fi).

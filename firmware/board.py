@@ -1,4 +1,4 @@
-"""Finds the Velo cameras, wherever they are plugged in. Used by velo_brain.py and mac_preview.py.
+"""Finds the Trax cameras, wherever they are plugged in. Used by trax_brain.py and mac_preview.py.
 
 Board (front + back cameras, and the seat webcam when it hangs off the board):
   1. USB cable to this Mac  -> adb port forwards, localhost:5055-5057   (no network needed)
@@ -24,7 +24,7 @@ import time
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 CAM_INDEX = {"front": 0, "rear": 1, "seat": 2}
-HOSTNAME = os.environ.get("VELO_HOST", "uno-q.local")
+HOSTNAME = os.environ.get("TRAX_HOST", "uno-q.local")
 
 
 class Board:

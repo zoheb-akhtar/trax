@@ -136,7 +136,7 @@ countdown and then prepares a message to the rider's emergency contact.
 
 ## Optional: the device's own positions and warnings
 
-A device that does its own perception (`firmware/velo_brain.py` does) can send more, and the app
+A device that does its own perception (`firmware/trax_brain.py` does) can send more, and the app
 uses it in place of its own estimates. See `firmware/APP_INTEGRATION.md` for the full list.
 
 - `detections[].position`: `[x, z]` in metres, x to the right, **z ahead** (negative = behind), with

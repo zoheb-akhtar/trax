@@ -10,7 +10,7 @@ if [ "$(adb get-state 2>/dev/null)" = "device" ]; then
   run() { adb shell "$1"; }; put() { adb push "$1" "$2" >/dev/null; }
   echo "board: USB"
 else
-  IP=$(python3 -c "import socket; print(socket.gethostbyname('${VELO_HOST:-uno-q.local}'))" 2>/dev/null) || {
+  IP=$(python3 -c "import socket; print(socket.gethostbyname('${TRAX_HOST:-uno-q.local}'))" 2>/dev/null) || {
     echo "board not found over USB or Wi-Fi"; exit 1; }
   run() { ssh -o ConnectTimeout=5 "arduino@$IP" "$1"; }; put() { scp -q "$1" "arduino@$IP:$2"; }
   echo "board: Wi-Fi $IP"

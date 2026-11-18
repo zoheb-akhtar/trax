@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Velo brain: Tesla-style perception for a bike, plus a Ring-doorbell park mode.
+"""Trax brain: Tesla-style perception for a bike, plus a Ring-doorbell park mode.
 
-Runs on the Mac today, standing in for the phone. Cameras (velo_config.json sets each one's role
+Runs on the Mac today, standing in for the phone. Cameras (trax_config.json sets each one's role
 and mount):
     front  Pi camera 1 (board)     road ahead: lanes, path, everything on the road
     seat   USB webcam on the seat  road behind: cars coming up, close passes, blind spots
@@ -20,9 +20,9 @@ SECURITY mode ("security" / "park": the bike is locked in the app)
   * ring orange (armed) -> amber (someone near: recording) -> red (intruder: recording, faces,
     "tamper" event for a push notification) -> alarm (security.py)
 
-    python velo_brain.py --show                  # brain + Tesla-style window
-    python velo_brain.py --show --voice          # ... and spoken warnings
-    python velo_brain.py --front video.mp4 --seat none --rear none --show   # test on a recording
+    python trax_brain.py --show                  # brain + Tesla-style window
+    python trax_brain.py --show --voice          # ... and spoken warnings
+    python trax_brain.py --front video.mp4 --seat none --rear none --show   # test on a recording
 
 API (port 8000, CORS *), the app's contract (docs/device-api.md in the app repo) + extensions:
     GET  /state                 mode, alarm, speedKmh, position, cameras, detections, events
@@ -784,7 +784,7 @@ def draw_bev(dets, road_state, w, h, alerts, range_m=30.0):
 
 
 def show_loop(brain: Brain, height):
-    win = "Velo brain"
+    win = "Trax brain"
     cv2.namedWindow(win, cv2.WINDOW_NORMAL)
     th = height
     decoders = {c: Decoder() for c in brain.sources}
@@ -869,7 +869,7 @@ def show_loop(brain: Brain, height):
 
 
 def main():
-    p = argparse.ArgumentParser(description="Velo brain: Tesla-style perception + park mode + the app's API")
+    p = argparse.ArgumentParser(description="Trax brain: Tesla-style perception + park mode + the app's API")
     p.add_argument("--front", default="board", help="'board', a URL, Mac camera name, or a video file")
     p.add_argument("--rear", default="board", help="Pi camera 2 (security camera): like --front, or 'none'")
     p.add_argument("--seat", default="auto", help="seat webcam (road behind): 'auto' = this Mac's USB webcam if "

@@ -7,7 +7,7 @@
 // Output (through the board's Linux side to the Mac's USB serial port):
 //   NMEA $GPRMC,...          every raw sentence, as received
 //   GPS fix=1 mode=3 sats=7 view=11 lat=42.339 lon=-71.087 speed_kmh=0.4 ...   once a second
-// Viewer: python3 ~/velo/gps_test/gps_view.py
+// Viewer: python3 ~/trax/gps_test/gps_view.py
 
 #include <Arduino_RouterBridge.h>
 

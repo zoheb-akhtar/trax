@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Bakes Velo's open-vocabulary detector: YOLO-World v2 (s) with Velo's own class list.
+"""Bakes Trax's open-vocabulary detector: YOLO-World v2 (s) with Trax's own class list.
 
 YOLO-World finds things from text prompts. Baking runs the CLIP text encoder once and stores the
-class embeddings inside models/velo-world.pt, so the brain needs no CLIP at run time.
+class embeddings inside models/trax-world.pt, so the brain needs no CLIP at run time.
 Re-run after editing WORLD_VOCAB in detectors.py.
 
     python tools/bake_world.py
@@ -25,7 +25,7 @@ SRC = os.environ.get("WORLD_WEIGHTS") or (os.path.join(_local, "yolov8s-worldv2.
                                           if os.path.exists(os.path.join(_local, "yolov8s-worldv2.pt"))
                                           else "yolov8s-worldv2.pt")
 CLIP_DIR = os.environ.get("CLIP_DIR") or (_local if os.path.isdir(os.path.join(_local, "weights", "clip")) else None)
-OUT = os.path.join(HERE, "models", "velo-world.pt")
+OUT = os.path.join(HERE, "models", "trax-world.pt")
 
 if __name__ == "__main__":
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
@@ -38,7 +38,7 @@ if __name__ == "__main__":
     for attr in ("clip_model", "text_model"):  # cached CLIP encoder: not needed once baked
         if hasattr(m.model, attr):
             setattr(m.model, attr, None)
-    tmp = os.path.join(HERE, "models", "velo-world.tmp.pt")
+    tmp = os.path.join(HERE, "models", "trax-world.tmp.pt")
     m.save(tmp)
     shutil.move(tmp, OUT)
     print("saved", OUT, "with", len(WORLD_VOCAB), "classes")

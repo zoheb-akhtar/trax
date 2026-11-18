@@ -2,7 +2,7 @@
   "version": "2.0.0",
   "tasks": [
     {
-      "label": "Velo diag: full test + live",
+      "label": "Trax diag: full test + live",
       "type": "shell",
       "command": "python3 hw_diag/hw_diag.py",
       "options": { "cwd": "${workspaceFolder}" },
@@ -10,7 +10,7 @@
       "problemMatcher": []
     },
     {
-      "label": "Velo diag: PASS/FAIL table only",
+      "label": "Trax diag: PASS/FAIL table only",
       "type": "shell",
       "command": "python3 hw_diag/hw_diag.py --no-live",
       "options": { "cwd": "${workspaceFolder}" },
@@ -18,7 +18,7 @@
       "problemMatcher": []
     },
     {
-      "label": "Velo diag: live readings only",
+      "label": "Trax diag: live readings only",
       "type": "shell",
       "command": "python3 hw_diag/hw_diag.py --live",
       "options": { "cwd": "${workspaceFolder}" },
@@ -26,7 +26,7 @@
       "problemMatcher": []
     },
     {
-      "label": "Velo diag: recompile + upload sketch",
+      "label": "Trax diag: recompile + upload sketch",
       "type": "shell",
       "command": "./flash_mcu.sh hw_diag",
       "options": { "cwd": "${workspaceFolder}" },

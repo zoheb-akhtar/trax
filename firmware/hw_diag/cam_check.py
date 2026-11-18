@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""Velo camera check, runs on the UNO Q's Linux side. Read-only.
+"""Trax camera check, runs on the UNO Q's Linux side. Read-only.
 
 It does not open the cameras itself, so it can't disturb the working pipeline: it watches the
-running velo-front / velo-back (and optional velo-seat) services by pulling all their MJPEG
-streams at the same time, exactly as the Velo app does. It also checks that both IMX219 sensors
+running trax-front / trax-back (and optional trax-seat) services by pulling all their MJPEG
+streams at the same time, exactly as the Trax app does. It also checks that both IMX219 sensors
 are linked, and that the kernel logs no camera errors during the test.
 
     python3 ~/hw_diag/cam_check.py            (hw_diag.py on the Mac runs this for you)
 
 Prints  RESULT <name> <PASS|WARN|FAIL|SKIP> <message>  lines. Saves one frame per camera to
-/tmp/velo_hw_diag_<name>.jpg.
+/tmp/trax_hw_diag_<name>.jpg.
 """
 
 import re
@@ -20,9 +20,9 @@ import urllib.request
 
 SECONDS = 6
 CAMS = [  # result name, service, port, required
-    ("CAM_FRONT", "velo-front", 5000, True),
-    ("CAM_BACK", "velo-back", 5001, True),
-    ("CAM_SEAT", "velo-seat", 5002, False),
+    ("CAM_FRONT", "trax-front", 5000, True),
+    ("CAM_BACK", "trax-back", 5001, True),
+    ("CAM_SEAT", "trax-seat", 5002, False),
 ]
 
 
@@ -134,7 +134,7 @@ def main():
     together = f", {streaming} streams at once" if streaming > 1 else ""
     for name, (svc, port, st) in active.items():
         if not st.get("frames") and name == "CAM_SEAT":
-            result(name, "SKIP", "velo-seat runs but sends no frames: seat webcam not plugged into the board (optional)")
+            result(name, "SKIP", "trax-seat runs but sends no frames: seat webcam not plugged into the board (optional)")
             continue
         if st.get("error") and not st.get("frames"):
             result(name, "FAIL", f"{svc} is running but its stream on port {port} failed ({st['error']}). "
@@ -145,7 +145,7 @@ def main():
                    f"See: journalctl -u {svc} -n 30 (an imx219/CCI -110 error means a loose ribbon)")
             continue
         fps = (st["frames"] - 1) / (st["last_t"] - st["first"]) if st["frames"] > 1 else 0
-        open(f"/tmp/velo_hw_diag_{name}.jpg", "wb").write(st["jpeg"])
+        open(f"/tmp/trax_hw_diag_{name}.jpg", "wb").write(st["jpeg"])
         stats = image_stats(st["jpeg"])
         size = f"{stats[0]}x{stats[1]}, " if stats else ""
         msg = f"{size}{fps:.1f} fps{together}"

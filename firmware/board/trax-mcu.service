@@ -1,5 +1,5 @@
 [Unit]
-Description=Velo sensors (STM32 IMU/GPS/ring line) over Wi-Fi on port 5010
+Description=Trax sensors (STM32 IMU/GPS/ring line) over Wi-Fi on port 5010
 After=network.target
 StartLimitIntervalSec=0
 

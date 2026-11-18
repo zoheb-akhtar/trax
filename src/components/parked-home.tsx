@@ -9,12 +9,11 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { entryLabel } from '@/components/security-entries';
-import { MjpegView } from '@/components/mjpeg-view';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui/button';
 import { Hairline, Spacing, Status, Type } from '@/constants/theme';
 import { useDevice } from '@/device/device-provider';
-import type { CameraView, Connection } from '@/device/types';
+import type { Connection } from '@/device/types';
 import { useRideHistory } from '@/history/history-provider';
 import {
   combinedSafetyScore,
@@ -25,7 +24,6 @@ import {
 } from '@/history/ride-history';
 import { formatDistance, formatDuration } from '@/nav/geo';
 import { useNav } from '@/nav/nav-provider';
-import { useRideUi } from '@/ride-ui/ride-ui-provider';
 import type { SecurityKind } from '@/security/security-log';
 import { useSecurity } from '@/security/security-provider';
 
@@ -34,12 +32,6 @@ const LINK: Record<Connection, { label: string; color: string }> = {
   simulated: { label: 'Simulated', color: Status.warn },
   connecting: { label: 'Connecting', color: Status.warn },
   offline: { label: 'Out of range', color: Status.danger },
-};
-
-const CAMERA_LABEL: Record<CameraView, string> = {
-  front: 'Front',
-  security: 'Security',
-  rear: 'Rear',
 };
 
 const ACTIVITY: Record<SecurityKind, { color: string; icon: SymbolViewProps['name'] }> = {
@@ -68,11 +60,11 @@ const ACTIVITY: Record<SecurityKind, { color: string; icon: SymbolViewProps['nam
 const DAY_MS = 86400000;
 
 /**
- * The Ride tab while Trax is armed: a live look through its cameras, its status, what has happened lately, and where you're going next.
+ * The Ride tab while Trax is armed: its status, what has happened lately, and where you're going next.
  */
 export function ParkedHome({ onPlan }: { onPlan(): void }) {
   const insets = useSafeAreaInsets();
-  const { state, connection, setMode, streamUrlFor, views } = useDevice();
+  const { state, connection, setMode } = useDevice();
   const { parked, entries } = useSecurity();
   const { rides } = useRideHistory();
   const trip = useNav();
@@ -104,18 +96,6 @@ export function ParkedHome({ onPlan }: { onPlan(): void }) {
   const batteryColors: [string, string] =
     (state.battery ?? 100) < 20 ? ['#FBE4DC', '#FBE4DC'] : ['#E2F3E9', '#E2F3E9'];
 
-  // Live video from whichever camera is picked.
-  const previews = views
-    .map((camera) => ({ camera, url: connection === 'connected' ? streamUrlFor(camera) : null }))
-    .filter((p) => p.url !== null);
-  // The big picture at the top: the rear camera unless the other one is picked.
-  const [picked, setCamera] = useState<CameraView | null>(null);
-  const chosen = picked ?? (views.includes('security') ? 'security' : 'rear');
-  // A camera asked for through the AI agent ("show the front camera") wins while it lasts.
-  const { pinnedCamera, pinCamera } = useRideUi();
-  const camera = pinnedCamera ?? chosen;
-  const main = previews.find((p) => p.camera === camera) ?? previews[0];
-
   const goodParking = trip.parking.find((p) => p.good && p.fromDestination < 350);
 
   const start = () => {
@@ -134,60 +114,6 @@ export function ParkedHome({ onPlan }: { onPlan(): void }) {
         </Text>
       </View>
       <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
-        {main ? (
-          <View style={styles.hero}>
-            {main.url && <MjpegView key={main.url} uri={main.url} />}
-            <View style={styles.heroTop}>
-              <View style={styles.previewTag}>
-                <View style={styles.liveDot} />
-                <Text style={styles.previewLabel}>Live</Text>
-              </View>
-              <View style={[styles.previewTag, styles.armedTag]}>
-                <SymbolView
-                  name={{ ios: 'lock.shield.fill', android: 'shield_lock', web: 'shield_lock' }}
-                  size={13}
-                  tintColor="#fff"
-                />
-                <Text style={styles.previewLabel}>Guarding</Text>
-              </View>
-            </View>
-            {previews.length > 1 && (
-              <View style={styles.switcher}>
-                {previews.map(({ camera: c }) => (
-                  <Pressable
-                    key={c}
-                    onPress={() => {
-                      pinCamera(null);
-                      setCamera(c);
-                    }}
-                    hitSlop={6}
-                    accessibilityRole="button"
-                    accessibilityState={{ selected: c === main.camera }}
-                    style={[styles.switch, c === main.camera && styles.switchOn]}
-                  >
-                    <Text style={[styles.switchText, c === main.camera && styles.switchTextOn]}>
-                      {CAMERA_LABEL[c]}
-                    </Text>
-                  </Pressable>
-                ))}
-              </View>
-            )}
-          </View>
-        ) : (
-          <View style={[styles.hero, styles.heroEmpty]}>
-            <SymbolView
-              name={{ ios: 'lock.shield.fill', android: 'shield_lock', web: 'shield_lock' }}
-              size={56}
-              tintColor={Status.ok}
-            />
-            <Text style={styles.muted}>
-              {connection === 'simulated'
-                ? 'The simulated device has no camera picture.'
-                : 'Trax is out of range, so there is no picture.'}
-            </Text>
-          </View>
-        )}
-
         <View style={styles.parkedRow}>
           <SymbolView
             name={{ ios: 'mappin.circle.fill', android: 'location_on', web: 'location_on' }}
@@ -419,44 +345,6 @@ const styles = StyleSheet.create({
     lineHeight: 46,
     letterSpacing: -1,
   },
-  hero: {
-    width: '100%',
-    aspectRatio: 4 / 3,
-    borderRadius: 24,
-    overflow: 'hidden',
-    backgroundColor: '#1B2330',
-  },
-  heroEmpty: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: Spacing.two,
-    padding: Spacing.four,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: Hairline,
-    backgroundColor: '#FFFFFF',
-  },
-  heroTop: {
-    position: 'absolute',
-    top: 12,
-    left: 12,
-    right: 12,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-  },
-  armedTag: { backgroundColor: Status.ok },
-  switcher: {
-    position: 'absolute',
-    bottom: 12,
-    alignSelf: 'center',
-    flexDirection: 'row',
-    padding: 3,
-    borderRadius: 12,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-  },
-  switch: { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 9 },
-  switchOn: { backgroundColor: '#fff' },
-  switchText: { color: 'rgba(255,255,255,0.8)', fontFamily: Type.medium, fontSize: 12 },
-  switchTextOn: { color: '#000' },
   inline: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   dot: { width: 8, height: 8, borderRadius: 4 },
   tiles: { flexDirection: 'row', gap: Spacing.two },
@@ -514,17 +402,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  previewTag: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    backgroundColor: 'rgba(0,0,0,0.55)',
-  },
-  liveDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: Status.danger },
-  previewLabel: { color: '#fff', fontFamily: Type.medium, fontSize: 11, letterSpacing: 0.8 },
   list: {
     borderRadius: 18,
     borderWidth: StyleSheet.hairlineWidth,

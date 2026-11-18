@@ -3,9 +3,9 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Velo HUD</title>
+<title>Trax HUD</title>
 <!--
-  Velo HUD: a live reference UI for the device API (served by velo_brain.py at /hud).
+  Trax HUD: a live reference UI for the device API (served by trax_brain.py at /hud).
   Everything here uses only the public endpoints, so the app can copy the logic:
     GET /state (polled 4x/s)   GET /stream?camera=...   GET /events/stream (SSE)
     GET /recordings   GET /ride   POST /lock /unlock /alarm /chirp
@@ -96,7 +96,7 @@
 </head>
 <body>
 <header>
-  <h1>Velo</h1>
+  <h1>Trax</h1>
   <div class="seg"><button id="bRide">Ride</button><button id="bPark">Park</button></div>
   <div class="stats">
     <span><span class="dot" id="live"></span><b id="conn">connecting</b></span>

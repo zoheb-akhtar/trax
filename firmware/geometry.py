@@ -8,7 +8,7 @@ road, a tilt (pitch, positive = looking down) and a heading (yaw: 0 = forward, 1
     x, z = cam.ground_point(u, v)        # image point (0-1) on the road -> metres
     u, v = cam.project(x, z)             # road point -> image point (or None if behind)
 
-Mount settings live in velo_config.json (measure camera height with a tape; the pitch can be
+Mount settings live in trax_config.json (measure camera height with a tape; the pitch can be
 read off a level, or tuned until the drawn ego path sits on the road).
 """
 
@@ -19,7 +19,7 @@ import math
 import os
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-CONFIG_PATH = os.path.join(HERE, "velo_config.json")
+CONFIG_PATH = os.path.join(HERE, "trax_config.json")
 
 DEFAULT_CONFIG = {
     "cameras": {

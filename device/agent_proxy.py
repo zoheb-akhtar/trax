@@ -47,7 +47,7 @@ MAX_OUTPUT_TOKENS = 16000
 # The password other devices on the network must send. Kept in a file beside this script so it
 # survives restarts (and isn't committed); TRAX_PROXY_TOKEN overrides it.
 # Speech to text. "base.en" is small and quick on a laptop; "small.en" is more accurate, slower.
-WHISPER_MODEL = os.environ.get("TRAX_WHISPER_MODEL") or os.environ.get("VELO_WHISPER_MODEL") or "base.en"
+WHISPER_MODEL = os.environ.get("TRAX_WHISPER_MODEL") or "base.en"
 MAX_AUDIO_BYTES = 8 * 1024 * 1024
 # Words the model should expect, so "Trax" is not heard as "tracks".
 SPEECH_HINT = "Trax. Arm the bike. Disarm the bike. Anything behind me? Show the rear camera."
@@ -57,7 +57,7 @@ LOCAL_ADDRESSES = {"127.0.0.1", "::1", "::ffff:127.0.0.1"}
 
 
 def proxy_token() -> str:
-    token = (os.environ.get("TRAX_PROXY_TOKEN") or os.environ.get("VELO_PROXY_TOKEN") or "").strip()
+    token = (os.environ.get("TRAX_PROXY_TOKEN") or "").strip()
     if token:
         return token
     try:

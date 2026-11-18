@@ -1,9 +1,9 @@
 /**
- * Velo device API: TypeScript types + a tiny client for the Trax app.
+ * Trax device API: TypeScript types + a tiny client for the Trax app.
  *
- * Copy this file into the app (e.g. src/device/velo-api.ts). No dependencies: uses fetch and
+ * Copy this file into the app (e.g. src/device/trax-api.ts). No dependencies: uses fetch and
  * EventSource (in React Native, poll `getEvents` or use a polyfill like react-native-sse).
- * The device is velo_brain.py on port 8000 (see firmware/APP_INTEGRATION.md for the meaning
+ * The device is trax_brain.py on port 8000 (see firmware/APP_INTEGRATION.md for the meaning
  * of each field and suggested UI). Every field the original docs/device-api.md defines is
  * unchanged; everything else is optional, so older device builds still type-check.
  */
@@ -23,7 +23,7 @@ export type ObjectGroup =
   | 'vehicle' | 'bicycle' | 'person' | 'animal' | 'sign' | 'obstacle' | 'micromobility'
   | 'traffic light' | 'face';
 
-/** Labels the device can report (COCO + Velo's open-vocabulary classes). */
+/** Labels the device can report (COCO + Trax's open-vocabulary classes). */
 export type ObjectLabel =
   | 'person' | 'bicycle' | 'car' | 'motorcycle' | 'bus' | 'train' | 'truck'
   | 'traffic light' | 'stop sign' | 'cat' | 'dog' | 'horse'
@@ -215,7 +215,7 @@ export interface DeviceState {
 }
 
 // ----------------------------------------------------------------------------- client
-export class VeloClient {
+export class TraxClient {
   constructor(public base: string) {}            // e.g. "http://192.168.1.20:8000"
 
   private async get<T>(path: string): Promise<T> {

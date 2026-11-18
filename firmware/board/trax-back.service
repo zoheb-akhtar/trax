@@ -1,0 +1,17 @@
+[Unit]
+Description=Trax back camera
+After=network.target
+StartLimitIntervalSec=0
+
+[Service]
+User=arduino
+WorkingDirectory=/home/arduino/trax
+ExecStartPre=/bin/sleep 8
+ExecStart=/usr/bin/python3 /home/arduino/trax/uno_q_camera.py --camera 1 --port 5001 --width 820 --height 616 --fps ${BACK_FPS} --workers 2 --max-exposure-ms 17 --hflip --vflip
+Restart=always
+RestartSec=3
+Environment=PYTHONUNBUFFERED=1 BACK_FPS=15
+EnvironmentFile=-/home/arduino/trax/back.env
+
+[Install]
+WantedBy=multi-user.target

@@ -5,7 +5,7 @@ Reads the readings the STM32 prints (imu_test.ino) from the board's USB serial p
 them at http://localhost:8090: a 3D board that tilts with the sensor, rotation speed, shake,
 temperature and live graphs.
 
-    python3 ~/velo/imu_test/imu_view.py
+    python3 ~/trax/imu_test/imu_view.py
 
 Needs the UNO Q on USB with imu_test.ino running. Close any other `cat /dev/cu.usbmodem*`
 first: only one program can read the port at a time. Standard library only.

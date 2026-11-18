@@ -1,5 +1,5 @@
-// Velo MCU firmware (Arduino UNO Q STM32, Zephyr core): IMU + GPS + NeoPixel ring, talking to the
-// Velo brain over the board's USB serial port (Bridge Monitor). Works on its own too: when parked
+// Trax MCU firmware (Arduino UNO Q STM32, Zephyr core): IMU + GPS + NeoPixel ring, talking to the
+// Trax brain over the board's USB serial port (Bridge Monitor). Works on its own too: when parked
 // it detects tampering from the IMU and turns the ring red without waiting for the brain.
 //
 // Wiring: MPU6050 SDA->D20 SCL->D21 (Wire); NEO-6M TX->D0 (Serial, USART1); RGBW ring DIN->D6.
@@ -456,7 +456,7 @@ void setup() {
     delay(10);
   }
   arm();
-  Monitor.println("VELO MCU ready");
+  Monitor.println("TRAX MCU ready");
 }
 
 void loop() {
